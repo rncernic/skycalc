@@ -1,0 +1,30 @@
+observatory_name: Tromso observatory
+observation_date: 20240109 # yyyy-mm-dd, dd/mm/yyyy, dd-mm-yyyy or yyyymmdd
+target_list: targets/OpenNGC
+type_filter: # e.g. Galaxy, Nebula
+output_dir: output
+
+location:
+  longitude: 19.0 # <->DDD.DD, DDD° MM' SS" <E/W> or DDDd MMm SSs <E/W>
+  latitude: 69.669998 # <->DD.DD, DDD° MM' SS" <N/S> or DDDd MMm SSs <N/S>
+  elevation: 0
+  timezone: 1.0
+
+environment:
+  pressure: 1022
+  temperature: 25
+  humidity: 70
+
+constraints:
+  altitude_constraint_min: 30  # in deg above horizon
+  altitude_constraint_max: 80  # in deg above horizon
+  size_constraint_min: 10  # in arc minutes
+  size_constraint_max: 300  # in arc minutes
+  moon_separation_min: 45  # in degrees
+  use_darkness: true
+  # object needs to be within the constraints for at least 50% of darkness
+  fraction_of_time_observable_threshold: 50
+  # maximum number of targets to calculate
+  max_number_within_threshold: 60
+
+

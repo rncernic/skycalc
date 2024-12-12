@@ -1,0 +1,182 @@
+use libm::{sin, cos, atan2, asin, round};
+use crate::julian::{jd2000_century, jd2000_from_date, jd_from_date};
+use crate::utils::{normalize_angle_360};
+use chrono::prelude::*;
+
+#[derive(Debug, Clone, Default)]
+pub struct Sun {
+    pub year: i64,
+    pub month: i64,
+    pub day: f64,
+    pub jd: f64,
+    pub jd2000: f64,
+    pub t: f64, // JD2000 century
+    pub latitude: f64,
+    pub longitude: f64,
+}
+
+impl Sun {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn ymd(self, year:i64, month: i64, day:f64) -> Self {
+        let t = jd2000_century(year, month, day);
+        let jd = jd_from_date(year, month, day);
+        let jd2000 = jd2000_from_date(year, month, day);
+        Self {year, month, day, jd, jd2000, t, ..self}
+    }
+
+    pub fn location(self, latitude: f64, longitude: f64) -> Self {
+        Self {latitude, longitude, ..self}
+    }
+
+    pub fn current_jd(&self) -> f64 {
+        round(self.jd - 2_451_545.0_f64 + 0.000_8)
+    }
+
+    // geometric mean longitude of the Sun, referred to the mean equinox of the date in degrees
+    pub fn mean_longitude(&self) -> f64 {
+        let l = 280.46645 + 36_000.76938 * self.t + 0.000_3032 * self.t * self.t;
+        normalize_angle_360(l)
+    }
+
+    // mean anomaly of the Sun
+    pub fn mean_anomaly(&self) -> f64 {
+        let m = 357.529_10 + 35_999.050_30_f64 * self.t - 0.000_1559 * self.t * self.t
+            - 0.000_000_48 * self.t * self.t * self.t;
+        normalize_angle_360(m)
+    }
+
+    // Earth's orbit eccentricity
+    pub fn earth_orbit_eccentricity(&self) -> f64 {
+        0.016_708_617 - 0.000_042_037 * self.t - 0.000_000_1236 * self.t * self.t
+    }
+
+    // Sun's equation of center
+    pub fn equation_center(&self) -> f64 {
+        let m = self.mean_anomaly().to_radians();
+        (1.914_600 - 0.004_817 * self.t - 0.000_014 * self.t * self.t) * sin(m) +
+            (0.019_993 - 0.000_101 * self.t) * sin(2.0 * m) +
+            0.000_290 * sin(3.0 * m)
+    }
+
+    // Sun's true longitude
+    pub fn true_longitude(&self) -> f64 {
+        let theta = self.mean_longitude() + self.equation_center();
+        normalize_angle_360(theta)
+    }
+
+    // Sun's true anomaly
+    pub fn true_anomaly(&self) -> f64 {
+        self.mean_anomaly() + self.equation_center()
+    }
+
+    // Sun's radius vector
+    pub fn radius_vector(&self) -> f64 {
+        let e = self.earth_orbit_eccentricity();
+        let v = self.true_anomaly();
+        1.000_001_018 * (1.0 - e * e) / (1.0 + e * cos(v.to_radians()))
+    }
+
+    // Sun's apparent longitude
+    pub fn apparent_longitude(&self) -> f64 {
+        let omega = 125.04 - 1_934.136 * self.t;
+        self.true_longitude() - 0.005_69 - 0.004_78 * sin(omega.to_radians())
+    }
+
+    // Ecliptic mean obliquity (21.2)
+    pub fn ecliptic_mean_obliquity(&self) -> f64 {
+        23.439_291_111 - 0.013_004_167 * self.t -
+            0.000_000_164 * self.t * self.t +
+            0.000_000_504 * self.t * self.t * self.t
+    }
+
+    // Sun's apparent position
+    // RA in hours and Dec in degrees
+    pub fn apparent_position(&self) -> (f64, f64) {
+        let e = self.ecliptic_mean_obliquity() +
+            0.002_56 * cos((125.04 - 1_934.136 * self.t).to_radians());
+        let ra = atan2(cos(e.to_radians()) * sin(self.apparent_longitude().to_radians()),
+                       cos(self.apparent_longitude().to_radians()));
+        let dec = asin(sin(e.to_radians()) * sin(self.apparent_longitude().to_radians()));
+        (normalize_angle_360(ra.to_degrees()), dec.to_degrees())
+    }
+
+    pub fn mean_solar_time(&self) -> f64 {
+        self.current_jd() - self.longitude / 360.0
+    }
+
+    pub fn transit(&self) -> f64 {
+        let m = self.mean_anomaly().to_radians();
+        let l = self.true_longitude().to_radians();
+        2_451_545.0 + self.mean_solar_time() + 0.005_3 * m.sin() - 0.006_9 * (2. * l).sin()
+    }
+
+    pub fn gmst (&self) -> f64 {
+        100.460_618_37 + 36_000.770_053_608 * self.t +
+            0.000_387_933 * self.t * self.t -
+            self.t * self.t * self.t / 38_710_000.0
+    }
+
+    pub fn lmst (&self) -> f64 {
+        self.gmst() - self.longitude
+    }
+
+    pub fn ha (&self) -> f64 {
+        normalize_angle_360(self.lmst() + self.longitude)
+    }
+
+    // pub fn hour_angle(&self) -> Result<f64, &'static str> {
+    pub fn hour_angle(&self) -> f64 {
+        let lat_rad = self.latitude.to_radians();
+        let dec_rad = (self.apparent_position().1).to_radians();
+
+        let numerator = -0.8333_f64.to_radians().sin() - lat_rad.sin() * dec_rad.sin();
+        let denominator = lat_rad.cos() * dec_rad.cos();
+
+        // if denominator > 1.0 {
+        //     Err("Sun Never Sets")
+        // } else if denominator < -1.0 {
+        //     Err("Sun Never Rises")
+        // } else {
+        //     Ok((numerator / denominator).acos().to_degrees())
+        // }
+        (numerator / denominator).acos().to_degrees()
+    }
+
+    pub fn alt (&self) -> f64 {
+        let l = self.latitude.to_radians();
+        let d = self.apparent_position().1.to_radians();
+        let h = self.hour_angle().to_radians();
+        (l.sin() * d.sin() + l.cos() * d.cos() * h.cos()).asin().to_degrees()
+    }
+
+    pub fn sunrise_sunset (&self) -> (f64, f64) {
+        (0.0,0.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sun::*;
+    use crate::utils::round_float;
+
+    #[test]
+    fn test_sun() {
+        let sun = Sun::new()
+            .ymd(1992, 10, 13.0);
+        // test Sun's geometric mean longitude
+        assert_eq!(round_float(sun.mean_longitude(), 5.0), 201.807_22);
+        assert_eq!(round_float(sun.mean_anomaly(), 5.0), 278.993_96);
+        assert_eq!(round_float(sun.earth_orbit_eccentricity(), 9.0), 0.016_711_651);
+        assert_eq!(round_float(sun.equation_center(), 5.0), -1.897_32);
+        assert_eq!(round_float(sun.true_longitude(), 5.0), 199.909_9);
+        assert_eq!(round_float(sun.radius_vector(), 5.0), 0.997_66);
+        assert_eq!(round_float(sun.apparent_longitude(), 3.0), 199.909);
+        assert_eq!(round_float(sun.ecliptic_mean_obliquity(), 5.0), 23.440_23);
+        assert_eq!(round_float(sun.apparent_position().0, 4.0), 198.380_8);
+        assert_eq!(round_float(sun.apparent_position().1, 4.0), -7.785_1);
+    }
+}
+

@@ -1,0 +1,28 @@
+
+------------------------------------------------------------------------------------------------------------
+SkyCalc v.0.0.1 alpha
+------------------------------------------------------------------------------------------------------------
+
+Observatory: My observatory
+
+  - Location    ->  lat: 0° 0' 0.0" N, lon: 0° 0' 0.0" E, alt: 0m, tz: 0.0
+  - Environment ->  pressure: 0 hPa, temperature: 0 °C, humidity: 0%
+
+Darkness info for night: (Wed) yyyy-mm-dd to (Thu) yyyy-mm-dd
+
+  - Sunset                  : 01-01 17:54  Sunrise                : 02-01 05:47  Length: hh:mm
+  - Civil Tw start          : 01-01 18:17  Civil Tw end           : 02-01 05:25  Length: hh:mm
+  - Nautical Tw start       : 01-01 18:43  Nautical Tw end        : 02-01 04:59  Length: hh:mm
+  - Astronomical Tw start   : 01-01 19:09  Astronomical Tw end    : 02-01 04:33  Length: hh:mm
+
+  - Moon rise               : hh:mm        Moon set               : hh:mm        Length: hh:mm
+  - Moon illumination       : xxx%         Moon age               : xx days      Phase : zzzzzzzzzz
+
+  - Deep Sky Darkness start : hh:mm        Deep Sky Darkness end  : hh:mm        Length: hh:mm
+  - Narrow Band start       : hh:mm        Narrow Band end        : hh:mm        Length: hh:mm
+
+------------------------------------------------------------------------------------------------------------
+
+Constraints:
+
+------------------------------------------------------------------------------------------------------------
