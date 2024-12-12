@@ -20,304 +20,359 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 
-// TODO remove before release
 #![allow(dead_code, unused_variables)]
 
 use std::fmt;
-use std::fmt::{Display, Formatter};
-use crate::constraints::Constraint;
-use crate::darkness::darkness_utc;
-use crate::datetime::{format_hm, ymd_hms_from_jd, DateTime};
-use crate::environment::Environment;
-use crate::location::Location;
-use crate::sun::{sun_hour_angle, sun_position_from_jd, sunrise_utc_grid, sunset_utc_grid, SunRS};
-use crate::moon::{moon_position_low_precision, moon_position_high_precision, moonrise_utc_grid, MoonRS, moonset_utc_grid};
+use chrono::{NaiveTime, Timelike};
+use serde::{Deserialize, Deserializer};
 
-#[derive(Debug, Clone, Default)]
-pub struct Observer {
-    pub observatory_name: Option<String>,
-    pub output_dir: String,
-    pub target_date: DateTime,
-    pub location: Location,
-    pub environment: Environment,
-    pub constraint: Constraint
+pub fn degrees_from_str(input: &str, min: f64, max: f64) -> f64 {
+    let input_trimmed = input.trim();
+
+    // First, try parsing as decimal degrees
+    if let Ok(deg) = input_trimmed.parse::<f64>() {
+        if deg < min || deg > max {
+            return 0.0;
+        }
+
+        return deg;
+    }
+
+    // If not decimal, try parsing as DMS (Degrees, Minutes, Seconds)
+    parse_dms(input_trimmed, min, max)
 }
 
-impl Display for Observer {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result{
-        write!(f, "")
+// Parses a DMS (degrees, minutes, seconds) string into decimal degrees within the specified range.
+pub fn parse_dms(dms: &str, min: f64, max: f64) -> f64 {
+    let dms = dms.to_lowercase();
+    let parts: Vec<&str> = dms.split(&['d','m','s','°', '\'','\"'][..]).collect();
+
+    if parts.is_empty() {
+        return 0.0;
     }
+
+    let mut deg = 0.0;
+    let mut min_val = 0.0;
+    let mut sec = 0.0;
+    let mut direction = 1.0;
+
+    // Determine direction (N/S/E/W)
+    if let Some(last_char) = dms.chars().last() {
+        match last_char {
+            'n' | 'e' => direction = 1.0,
+            's' | 'w' => direction = -1.0,
+            _ => {}
+        }
+    }
+
+    // Parse degrees
+    deg = parts[0].parse::<f64>().unwrap_or(0.0);
+
+    // Parse minutes if available
+    if parts.len() > 1 {
+        min_val = parts[1].trim().parse::<f64>().unwrap_or(0.0);
+    }
+
+    // Parse seconds if available
+    if parts.len() > 2 {
+        sec = parts[2].trim().parse::<f64>().unwrap_or(0.0);
+    }
+
+    // Convert DMS to decimal degrees
+    let decimal_deg = direction * (deg + min_val / 60.0 + sec / 3600.0);
+
+    // Ensure the value is within the specified range
+    if decimal_deg < min || decimal_deg > max {
+        return 0.0;
+    }
+    decimal_deg
+}
+
+// Parse timezone from string, e.g., "+05:30" or "-02:00" or "3.5"
+pub fn timezone_from_str(input: &str) -> f64 {
+    let input_trimmed = input.trim();
+
+    // First, try parsing as decimal degrees
+    if let Ok(deg) = input_trimmed.parse::<f64>() {
+        return deg;
+    }
+
+    // If not decimal, try parsing as HM (Hours, Minutes)
+    parse_hm(input_trimmed)
+}
+
+// Parses a HM (hour, minutes) string into decimal hours.
+pub fn parse_hm(hm: &str) -> f64 {
+    // Check for a leading '-' to handle negative times
+    let is_negative = hm.starts_with('-');
+    let time_part = if is_negative {
+        &hm[1..] // Remove the '-' for parsing
+    } else {
+        hm
+    };
+
+    if let Ok(time) = NaiveTime::parse_from_str(time_part, "%H:%M") {
+        let decimal_hours = time.hour() as f64 + time.minute() as f64 / 60.0;
+        return if is_negative { -decimal_hours } else { decimal_hours };
+    }
+
+    0.0 // Return 0.0 if parsing fails
+}
+
+/// Observer struct
+///
+/// This struct represents an observer.
+///
+/// # Attributes
+///
+/// * `name` - Optional name of the observer or observatory
+/// * `lat` - Latitude of the observer in degrees
+/// * `lon` - Longitude of the observer in degrees
+/// * `elevation` - Elevation of the observer in meters
+///
+/// # Methods
+///
+/// * `new` - Create a new Observer
+/// * `local_sidereal_time` - Calculate the local sidereal time at a given time
+/// * `to_string_decimal` - Convert the Observer to a string
+///
+/// # Examples
+///
+/// ```no_run
+// TODO Adjust example after refactoring time
+/// use observer::{Observer, Time};
+///
+/// let observer = Observer::location(-23.1, -46.5, 780, Some("Piracaia".to_string()));
+/// let time = Time::new(2024, 11, 14, 12, 0, 0);
+/// let lst = observer.local_sidereal_time(&time);
+/// println!("Local sidereal time: {}", lst);
+/// assert_eq!(lst, 315.09169822871746);
+/// ```
+
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct Observer {
+    #[serde(default = "default_name")]
+    pub name: Option<String>,
+    #[serde(default = "default_lat", deserialize_with = "deserialize_latitude")]
+    pub latitude: f64,
+    #[serde(default = "default_lon", deserialize_with = "deserialize_longitude")]
+    pub longitude: f64,
+    #[serde(default = "default_elevation", deserialize_with = "deserialize_elevation")]
+    pub elevation: i64,
+    #[serde(default = "default_timezone", deserialize_with = "deserialize_timezone")]
+    pub timezone: f64
+}
+
+// Default value functions for Observer fields
+pub fn default_name() -> Option<String> {
+    Some("My observatory".to_string())
+}
+
+pub fn default_lat() -> f64 {
+    0.0
+}
+
+pub fn default_lon() -> f64 {
+    0.0
+}
+
+pub fn default_elevation() -> i64 {
+    0
+}
+
+pub fn default_timezone() -> f64 {
+    0.0 // Default timezone is UTC
+}
+
+// Custom deserializer for latitude
+fn deserialize_latitude<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    Ok(degrees_from_str(&value, -180.0, 180.0))
+}
+
+// Custom deserializer for longitude
+fn deserialize_longitude<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    Ok(degrees_from_str(&value, -180.0, 180.0))
+}
+
+fn deserialize_elevation<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<i64> = Option::deserialize(deserializer)?;
+    // If the value is None (either missing or null), use the default value
+    match value {
+        Some(value) => Ok(value),
+        None => Ok(default_elevation()), // Use the default value
+    }
+}
+
+// Custom deserializer for timezone
+fn deserialize_timezone<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    Ok(timezone_from_str(&value))
 }
 
 impl Observer {
-    pub fn new(observatory_name: String, output_dir: String, target_date:DateTime,
-               location: Location, environment: Environment,
-               constraint: Constraint) -> Self {
-        Self { observatory_name: Some(observatory_name), output_dir, target_date, location, environment, constraint }
+
+    /// Create a new Observer with default values
+    ///
+    ///
+    ///  # Returns
+    ///
+    /// * `Observer` - A new Observer object
+    ///
+    pub fn new() -> Self { Self::default()}
+
+    /// Create a new Observer for a given location
+    ///
+    ///
+    /// # Arguments
+    ///
+    /// * `lat` - Latitude of the observer in degrees
+    /// * `lon` - Longitude of the observer in degrees
+    /// * `elevation` - Elevation of the observer in meters
+    /// * `name` - Optional name of the observer
+    ///
+    /// # Returns
+    ///
+    /// * `Observer` - A new Observer object based on the given location
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use observer::Observer;
+    ///
+    /// let observer = Observer::new(-23.1, -46.5, 780, Some("Piracaia".to_string()));
+    /// assert_eq!(observer.lat, -23.1);
+    /// assert_eq!(observer.lon, -46.5);
+    /// assert_eq!(observer.elevation, 780);
+    /// assert_eq!(observer.name, Some("Piracaia".to_string()));
+    /// println!("{}", observer.to_string());
+    /// ```
+    ///
+    /// ```no_run
+    /// use observer::Observer;
+    ///
+    /// let observer = Observer::location("23d 06m S", "46d 30m W", 780, None);
+    /// assert_eq!(observer.lat, -23.1);
+    /// assert_eq!(observer.lon, -46.5);
+    /// assert_eq!(observer.elevation, 780);
+    /// assert_eq!(observer.name, None);
+    /// println!("{}", observer.to_string());
+    /// ```
+    pub fn location(name: Option<String>, lat: &str, lon: &str, elevation: i64, tz: &str) -> Observer {//(i64, u64)) -> Observer {
+        let latitude = degrees_from_str(lat, -90.0, 90.0);
+        let longitude = degrees_from_str(lon, -180.0, 180.0);
+        let timezone = timezone_from_str(tz);
+        Observer { name, latitude, longitude, elevation, timezone }
     }
 
-    pub fn get_sun_position(&self) -> (f64, f64) {
-        let (ra, dec) = sun_position_from_jd(self.target_date.jd);
-        (ra, dec)
-    }
-
-    pub fn get_sun_hour_angle(&self) -> f64 {
-        sun_hour_angle(self.location.latitude, self.get_sun_position().1)
-    }
-
-    pub fn get_moon_position_low_precision(&self) -> (f64, f64) {
-        moon_position_low_precision(self.target_date.jd2000_century)
-    }
-
-    pub fn get_moon_position_high_precision(&self) -> (f64, f64) {
-        let (ra, dec, _) = moon_position_high_precision(self.target_date.jd2000_century);
-        (ra, dec)
-    }
-
-    pub fn get_moon_distance(&self) -> f64 {
-        let (_, _, d) = moon_position_high_precision(self.target_date.jd2000_century);
-        d
-    }
-
-    pub fn get_moonrise_moonset_utc_grid(&self) -> (f64) {
-        moonrise_utc_grid(
-            self.target_date.jd,
-            self.location.latitude,
-            self.location.longitude,
-            self.location.timezone
-        ).unwrap()
-    }
-
-    pub fn get_moonrise_local_grid(&self) -> Result<f64, MoonRS> {
-        let rise_utc = moonrise_utc_grid(
-            self.target_date.jd,
-            self.location.latitude,
-            self.location.longitude,
-            self.location.timezone
-        );
-        match rise_utc {
-            Ok(rise) => Ok(rise + self.location.timezone / 24.0),
-            Err(e) => Err(e),
+    /// Convert the Observer to a string
+    ///
+    /// # Returns
+    ///
+    /// * `String` - A string representing the observer with latitude and longitude im decimal degrees
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use observer::Observer;
+    ///
+    /// let observer = Observer::location("-23.1", "-46.5", 780, Some("Piracaia".to_string()));
+    /// assert_eq!(observer.to_string(), "Name: Piracaia, Lat: -23.1, Lon: -46.5, Elevation: 780");
+    /// println!("{}", observer.to_string_decimal());
+    /// ```
+    ///
+    /// ```no_run
+    /// use observer::Observer;
+    ///
+    /// let observer = Observer::location("-23.1", "-46.5", 780, None);
+    /// assert_eq!(observer.to_string(), "Name: My observatory, Lat: -23.1, Lon: -46.5, Elevation: 780");
+    /// println!("{}", observer.to_string());
+    /// ```
+    pub fn to_string_decimal(&self) -> String {
+        if let Some(name) = &self.name {
+            return format!("{}, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
+                           name, self.latitude, self.longitude, self.elevation, self.timezone)
         }
-
+        format!("My observatory, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
+                self.latitude, self.longitude, self.elevation, self.timezone)
     }
 
-    pub fn get_moonset_local_grid(&self) -> Result<f64, MoonRS> {
-        let set_utc = moonset_utc_grid(
-            self.target_date.jd,
-            self.location.latitude,
-            self.location.longitude,
-            self.location.timezone
-        );
-        match set_utc {
-            Ok(set) => Ok(set + self.location.timezone / 24.0),
-            Err(e) => Err(e),
-        }
-
+    // TODO Create to_string_dms
+    pub fn to_string_dms(&self) -> String {
+        // if let Some(name) = &self.name {
+        //     return format!("{}, lat: {}, lon: {}, elevation: {} m, tz: {:03}:{:02} h",
+        //                    name, self.latitude, self.longitude, self.elevation, self.timezone.0, self.timezone.1)
+        // }
+        // format!("My observatory, lat: {}, lon: {}, elevation: {} m, tz: {:03}:{:02} h",
+        //         self.latitude, self.longitude, self.elevation, self.timezone.0, self.timezone.1)
+        "".to_string()
     }
+}
 
-    pub fn get_sunrise_local_grid(&self, horizon: f64) -> Result<f64, SunRS> {
-        let rise_utc = sunrise_utc_grid(
-            self.target_date.jd,
-            self.location.latitude,
-            self.location.longitude,
-            horizon,
-            self.location.timezone
-        );
-        match rise_utc {
-            Ok(rise) => Ok(rise + self.location.timezone / 24.0),
-            Err(e) => Err(e),
-        }
-    }
-
-    pub fn get_sunset_local_grid(&self, horizon: f64) -> Result<f64, SunRS> {
-        let set_utc = sunset_utc_grid(
-            self.target_date.jd,
-            self.location.latitude,
-            self.location.longitude,
-            horizon,
-            self.location.timezone
-        );
-        match set_utc {
-            Ok(set) => Ok(set + self.location.timezone / 24.0),
-            Err(e) => Err(e),
-        }
-    }
-
-    pub fn get_darkness_astronomical_utc(&self) -> (f64, f64) {
-        let (utc_rise, utc_set) = darkness_utc(self.location.latitude, self.location.longitude, self.target_date.jd, 3);
-        (utc_rise, utc_set)
-    }
-
-    pub fn get_darkness_nautical_utc(&self) -> (f64, f64) {
-        let (utc_rise, utc_set) = darkness_utc(self.location.latitude, self.location.longitude, self.target_date.jd, 2);
-        (utc_rise, utc_set)
-    }
-
-    pub fn get_darkness_civil_utc(&self) -> (f64, f64) {
-        let (utc_rise, utc_set) = darkness_utc(self.location.latitude, self.location.longitude, self.target_date.jd, 1);
-        (utc_rise, utc_set)
-    }
-
-    pub fn get_darkness_rise_set_utc(&self) -> (f64, f64) {
-        let (utc_rise, utc_set) = darkness_utc(self.location.latitude, self.location.longitude, self.target_date.jd, 0);
-        (utc_rise, utc_set)
-    }
-
-    pub fn get_sunrise_sunset_str(&self) -> (String, String) {
-
-        let horizon = -0.8333;
-        let mut sunset = "".to_string();
-        let mut sunrise = "".to_string();
-
-        match self.get_sunset_local_grid(horizon) {
-            Ok(set) => sunset = format_hm(ymd_hms_from_jd(set).0,
-                                          ymd_hms_from_jd(set).1,
-                                          ymd_hms_from_jd(set).2,
-                                          ymd_hms_from_jd(set).3,
-                                          ymd_hms_from_jd(set).4,
-                                          ymd_hms_from_jd(set).5).to_string(),
-            Err(e) => sunset = "Never set".to_string(),
-        };
-
-        match self.get_sunrise_local_grid(horizon) {
-            Ok(rise) => sunrise = format_hm(ymd_hms_from_jd(rise).0,
-                                          ymd_hms_from_jd(rise).1,
-                                          ymd_hms_from_jd(rise).2,
-                                          ymd_hms_from_jd(rise).3,
-                                          ymd_hms_from_jd(rise).4,
-                                          ymd_hms_from_jd(rise).5).to_string(),
-            Err(e) => sunrise = "Never rise".to_string(),
-        }
-
-        if sunset == "Never set" {
-            sunrise = sunset.to_string();
-            (sunrise, sunset)
+impl fmt::Display for Observer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(name) = &self.name {
+            write!(f, "{}, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
+                   name, self.latitude, self.longitude, self.elevation, self.timezone)
         } else {
-            if sunrise == "Never rise" {
-                sunset = sunrise.to_string();
-                (sunrise, sunset)
-            } else {
-                (sunrise, sunset)
-            }
+            write!(f, "My observatory, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
+                   self.latitude, self.longitude, self.elevation, self.timezone)
         }
     }
+}
 
-    pub fn get_civil_rise_set_str(&self) -> (String, String) {
+#[cfg(test)]
+mod tests {
+    use crate::observer::Observer;
 
-        let horizon = -6.0;
-        let mut sunset = "".to_string();
-        let mut sunrise = "".to_string();
-
-        match self.get_sunset_local_grid(horizon) {
-            Ok(set) => sunset = format_hm(ymd_hms_from_jd(set).0,
-                                          ymd_hms_from_jd(set).1,
-                                          ymd_hms_from_jd(set).2,
-                                          ymd_hms_from_jd(set).3,
-                                          ymd_hms_from_jd(set).4,
-                                          ymd_hms_from_jd(set).5).to_string(),
-            Err(e) => sunset = "Never set".to_string(),
-        };
-
-        match self.get_sunrise_local_grid(horizon) {
-            Ok(rise) => sunrise = format_hm(ymd_hms_from_jd(rise).0,
-                                            ymd_hms_from_jd(rise).1,
-                                            ymd_hms_from_jd(rise).2,
-                                            ymd_hms_from_jd(rise).3,
-                                            ymd_hms_from_jd(rise).4,
-                                            ymd_hms_from_jd(rise).5).to_string(),
-            Err(e) => sunrise = "Never rise".to_string(),
-        }
-
-        if sunset == "Never set" {
-            sunrise = sunset.to_string();
-            (sunrise, sunset)
-        } else {
-            if sunrise == "Never rise" {
-                sunset = sunrise.to_string();
-                (sunrise, sunset)
-            } else {
-                (sunrise, sunset)
-            }
-        }
+    #[test]
+    fn test_observer_location_decimal() {
+        let observer = Observer::location(Some("Piracaia".to_string()), "-23.1", "-46.5",
+                                          780, "-3.0");
+        assert_eq!(observer.name, Some("Piracaia".to_string()));
+        assert_eq!(observer.latitude, -23.1);
+        assert_eq!(observer.longitude, -46.5);
+        assert_eq!(observer.elevation, 780);
+        assert_eq!(observer.timezone, -3.0);
+        println!("{}", observer.to_string());
     }
 
-    pub fn get_nautical_rise_set_str(&self) -> (String, String) {
-
-        let horizon = -12.0;
-        let mut sunset = "".to_string();
-        let mut sunrise = "".to_string();
-
-        match self.get_sunset_local_grid(horizon) {
-            Ok(set) => sunset = format_hm(ymd_hms_from_jd(set).0,
-                                          ymd_hms_from_jd(set).1,
-                                          ymd_hms_from_jd(set).2,
-                                          ymd_hms_from_jd(set).3,
-                                          ymd_hms_from_jd(set).4,
-                                          ymd_hms_from_jd(set).5).to_string(),
-            Err(e) => sunset = "Never set".to_string(),
-        };
-
-        match self.get_sunrise_local_grid(horizon) {
-            Ok(rise) => sunrise = format_hm(ymd_hms_from_jd(rise).0,
-                                            ymd_hms_from_jd(rise).1,
-                                            ymd_hms_from_jd(rise).2,
-                                            ymd_hms_from_jd(rise).3,
-                                            ymd_hms_from_jd(rise).4,
-                                            ymd_hms_from_jd(rise).5).to_string(),
-            Err(e) => sunrise = "Never rise".to_string(),
-        }
-
-        if sunset == "Never set" {
-            sunrise = sunset.to_string();
-            (sunrise, sunset)
-        } else {
-            if sunrise == "Never rise" {
-                sunset = sunrise.to_string();
-                (sunrise, sunset)
-            } else {
-                (sunrise, sunset)
-            }
-        }
+    #[test]
+    fn test_observer_location_dms() {
+        let observer = Observer::location(None, "23d 06m S", "46d 30m W",
+                                          780, "-3:00");
+        assert_eq!(observer.name, None);
+        assert_eq!(observer.latitude, -23.1);
+        assert_eq!(observer.longitude, -46.5);
+        assert_eq!(observer.elevation, 780);
+        assert_eq!(observer.timezone, -3.0);
+        println!("{}", observer.to_string());
     }
 
-    pub fn get_astro_rise_set_str(&self) -> (String, String) {
-
-        let horizon = -18.0;
-        let mut sunset = "".to_string();
-        let mut sunrise = "".to_string();
-
-        match self.get_sunset_local_grid(horizon) {
-            Ok(set) => sunset = format_hm(ymd_hms_from_jd(set).0,
-                                          ymd_hms_from_jd(set).1,
-                                          ymd_hms_from_jd(set).2,
-                                          ymd_hms_from_jd(set).3,
-                                          ymd_hms_from_jd(set).4,
-                                          ymd_hms_from_jd(set).5).to_string(),
-            Err(e) => sunset = "Never set".to_string(),
-        };
-
-        match self.get_sunrise_local_grid(horizon) {
-            Ok(rise) => sunrise = format_hm(ymd_hms_from_jd(rise).0,
-                                            ymd_hms_from_jd(rise).1,
-                                            ymd_hms_from_jd(rise).2,
-                                            ymd_hms_from_jd(rise).3,
-                                            ymd_hms_from_jd(rise).4,
-                                            ymd_hms_from_jd(rise).5).to_string(),
-            Err(e) => sunrise = "Never rise".to_string(),
-        }
-
-        if sunset == "Never set" {
-            sunrise = sunset.to_string();
-            (sunrise, sunset)
-        } else {
-            if sunrise == "Never rise" {
-                sunset = sunrise.to_string();
-                (sunrise, sunset)
-            } else {
-                (sunrise, sunset)
-            }
-        }
+    #[test]
+    fn test_observer_to_string_decimal_with_name() {
+        let observer = Observer::location(Some("Piracaia".to_string()), "-23.1", "-46.5", 780, "3.5");
+        assert_eq!(observer.to_string(), "Piracaia, lat: -23.1, lon: -46.5, elevation: 780 m, tz: 3.50 h");
+        println!("{}", observer.to_string_decimal());
     }
 
+    #[test]
+    fn test_observer_to_string_decimal_without_name() {
+        let observer = Observer::location(None, "-23.1", "-46.5", 780, "-3:00");
+        assert_eq!(observer.to_string(), "My observatory, lat: -23.1, lon: -46.5, elevation: 780 m, tz: -3.00 h");
+        println!("{}", observer.to_string_decimal());
+    }
 }

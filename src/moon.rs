@@ -23,20 +23,22 @@
 // TODO remove before release
 #![allow(dead_code, unused_variables)]
 
-use crate::datetime::{jd2000_century_from_jd, ymd_from_jd};
 use crate::utils::{cosd, sind, tand, constrain_360, cross_horizon, two_point_interpolation};
 use crate::transformations::{equatorial_to_altaz};
 use crate::earth::nutation;
 use libm::{atan2};
 use std::f64::consts::PI;
+use crate::environment::{Environment};
+use crate::observer::{Observer};
+use crate::sun::{RiseSetType};
+use crate::time::{Time};
 
 #[derive(Debug)]
 pub enum MoonRS {
     NeverRise,
-    NeverSet,
-    Rise,
-    Set,
+    NeverSet
 }
+
 
 // D, M, Mprime, F
 const LUNAR_LON_ARGS: &[&[f64]] = &[
@@ -354,22 +356,22 @@ pub fn moon_position_high_precision(t: f64) -> (f64, f64, f64) {
 }
 
 pub fn moon_alt_az_grid_utc(lat: f64, lon:f64, jd_start: f64, jd_end: f64,
-                           num_points: usize) -> Vec<(f64, f64, f64)> {
+                            num_points: usize) -> Vec<(f64, f64, f64)> {
     let mut grid: Vec<(f64, f64, f64)> = Vec::new();
     let inc = (jd_end - jd_start) / num_points as f64;
     for i in 0..=num_points {
         let jd = jd_start + inc * i as f64;
-        let t = jd2000_century_from_jd(jd);
+        let t = (jd  - 2_451_545.0) / 36_525.0; // jd2000 century
         let (ra, dec, _) = moon_position_high_precision(t);
-        let (y, m, d) = ymd_from_jd(jd);
-        let (alt, az) = equatorial_to_altaz(lat, lon, ra, dec, y, m, d);
+        let date = Time::from_jd(jd);
+        let (alt, az) = equatorial_to_altaz(lat, lon, ra, dec, date.year, date.month,
+                                            date.day, date.hour, date.minute, date.second);
         grid.push((jd, alt, az));
     }
     grid
 }
 
-//Todo implement previous, next and nearest
-pub fn moonrise_utc_grid(jd: f64, lat: f64, lon: f64, tz: f64) -> Result<f64, MoonRS> {
+pub fn moonrise_utc_grid(lat: f64, lon: f64, jd: f64, tz: f64) -> Result<f64, MoonRS> {
     let num_points = 288;
     let target_night_start = (jd + 0.5).floor() + tz / 24.0; // Noon @ local time
     let target_night_end = target_night_start + 1.0;
@@ -382,8 +384,49 @@ pub fn moonrise_utc_grid(jd: f64, lat: f64, lon: f64, tz: f64) -> Result<f64, Mo
     }
 }
 
-//Todo implement previous, next and nearest
-pub fn moonset_utc_grid(jd: f64, lat: f64, lon: f64, tz: f64) -> Result<f64, MoonRS> {
+pub fn next_moonrise_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+    let mut current_jd = jd;
+    for _ in 0..max_days { // Limit to 2 days of iterations
+        match moonrise_utc_grid(lat, lon, current_jd, tz) {
+            Ok(moonrise) => return Ok(moonrise),
+            Err(MoonRS::NeverRise) => current_jd += 1.0, // Skip to the next day
+            Err(e) => return Err(e),
+        }
+    }
+    Err(MoonRS::NeverRise) // Return error if no moon rise is found within the range
+}
+
+pub fn previous_moonrise_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+    let mut current_jd = jd - 1.0;
+    for _ in 0..max_days { // Limit to 2 days of iterations
+        match moonrise_utc_grid(lat, lon, current_jd, tz) {
+            Ok(moonrise) => return Ok(moonrise),
+            Err(MoonRS::NeverRise) => current_jd -= 1.0, // Skip to the next day
+            Err(e) => return Err(e),
+        }
+    }
+    Err(MoonRS::NeverRise) // Return error if no moon rise is found within the range
+}
+
+pub fn nearest_moonrise_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+    let next = next_moonrise_utc(lat, lon, jd, tz, max_days);
+    let previous = previous_moonrise_utc(lat, lon, jd, tz, max_days);
+
+    match (next, previous) {
+        (Ok(next_moonrise), Ok(previous_moonrise)) => {
+            if (next_moonrise - jd).abs() < (jd - previous_moonrise).abs() {
+                Ok(next_moonrise)
+            } else {
+                Ok(previous_moonrise)
+            }
+        }
+        (Ok(next_moonrise), Err(_)) => Ok(next_moonrise), // Only next is valid
+        (Err(_), Ok(previous_moonrise)) => Ok(previous_moonrise), // Only previous is valid
+        (Err(next_err), Err(prev_err)) => Err(next_err), // Neither is valid, return an error
+    }
+}
+
+pub fn moonset_utc_grid(lat: f64, lon: f64, jd: f64, tz: f64) -> Result<f64, MoonRS> {
     let num_points = 288;
     let target_night_start = (jd + 0.5).floor() + tz / 24.0; // Noon @ local time
     let target_night_end = target_night_start + 1.0;
@@ -395,3 +438,154 @@ pub fn moonset_utc_grid(jd: f64, lat: f64, lon: f64, tz: f64) -> Result<f64, Moo
         Ok(two_point_interpolation(v[0].0, v[0].2, v[0].1, v[0].3, 0.125))
     }
 }
+
+pub fn next_moonset_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+    let mut current_jd = jd;
+    for _ in 0..max_days { // Limit to 2 days of iterations
+        match moonset_utc_grid(lat, lon, current_jd, tz) {
+            Ok(moonset) => return Ok(moonset),
+            Err(MoonRS::NeverSet) => current_jd += 1.0, // Skip to the next day
+            Err(e) => return Err(e),
+        }
+    }
+    Err(MoonRS::NeverSet) // Return error if no moon set is found within the range
+}
+
+pub fn previous_moonset_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+    let mut current_jd = jd - 1.0;
+    for _ in 0..max_days { // Limit to 2 days of iterations
+        match moonrise_utc_grid(lat, lon, current_jd, tz) {
+            Ok(moonset) => return Ok(moonset),
+            Err(MoonRS::NeverSet) => current_jd -= 1.0, // Skip to the next day
+            Err(e) => return Err(e),
+        }
+    }
+    Err(MoonRS::NeverSet) // Return error if no moon set is found within the range
+}
+
+pub fn nearest_moonset_utc(lat: f64, lon: f64, jd:f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+    let next = next_moonset_utc(lat, lon, jd, tz, max_days);
+    let previous = previous_moonset_utc(lat, lon, jd, tz, max_days);
+
+    match (next, previous) {
+        (Ok(next_moonset), Ok(previous_moonset)) => {
+            if (next_moonset - jd).abs() < (jd - previous_moonset).abs() {
+                Ok(next_moonset)
+            } else {
+                Ok(previous_moonset)
+            }
+        }
+        (Ok(next_moonset), Err(_)) => Ok(next_moonset), // Only next is valid
+        (Err(_), Ok(previous_moonset)) => Ok(previous_moonset), // Only previous is valid
+        (Err(next_err), Err(prev_err)) => Err(next_err), // Neither is valid, return an error
+    }
+}
+
+pub struct Moon<'a> {
+    pub observer: &'a Observer,
+    pub time: &'a Time,
+    pub environment: &'a Environment
+}
+
+impl<'a> Moon<'a> {
+    pub fn new(observer: &'a Observer, time: &'a Time, environment: &'a Environment) -> Moon<'a> {
+        Moon{ observer, time, environment }
+    }
+
+    fn get_moon_event_utc<F>(
+        &self,
+        rise_set_type: RiseSetType,
+        nearest_fn: F,
+        next_fn: F,
+        previous_fn: F,
+    ) -> f64
+    where
+        F: Fn(f64, f64, f64, f64, u32) -> Result<f64, MoonRS>,
+    {
+        const MAX_DAYS: u32 = 2; // number of days to look forward or backward
+        let latitude = self.observer.latitude;
+        let longitude = self.observer.longitude;
+        let jd = self.time.to_jd();
+        let timezone = self.observer.timezone;
+
+        match rise_set_type {
+            RiseSetType::Nearest => nearest_fn(latitude, longitude, jd, timezone, MAX_DAYS)
+                .unwrap_or(0.0),
+            RiseSetType::Next => next_fn(latitude, longitude, jd, timezone, MAX_DAYS)
+                .unwrap_or(0.0),
+            RiseSetType::Previous => previous_fn(latitude, longitude, jd, timezone, MAX_DAYS)
+                .unwrap_or(0.0),
+        }
+    }
+
+    pub fn get_moonrise_utc(&self, rise_set_type: RiseSetType) -> f64 {
+        self.get_moon_event_utc(
+            rise_set_type,
+            nearest_moonrise_utc as fn(f64, f64, f64, f64, u32) -> Result<f64, MoonRS>,
+            next_moonrise_utc as fn(f64, f64, f64, f64, u32) -> Result<f64, MoonRS>,
+            previous_moonrise_utc as fn(f64, f64, f64, f64, u32) -> Result<f64, MoonRS>,
+        )
+    }
+
+    pub fn get_moonset_utc(&self, rise_set_type: RiseSetType) -> f64 {
+        self.get_moon_event_utc(
+            rise_set_type,
+            nearest_moonset_utc as fn(f64, f64, f64, f64, u32) -> Result<f64, MoonRS>,
+            next_moonset_utc as fn(f64, f64, f64, f64, u32) -> Result<f64, MoonRS>,
+            previous_moonset_utc as fn(f64, f64, f64, f64, u32) -> Result<f64, MoonRS>,
+        )
+    }
+
+    pub fn get_moonrise_local(&self, rise_set_type: RiseSetType) -> f64 {
+        let utc = self.get_moonrise_utc(rise_set_type);
+        if utc == 0.0 {
+            0.0
+        } else {
+            utc + self.observer.timezone / 24.0
+        }
+    }
+
+    pub fn get_moonset_local(&self, rise_set_type: RiseSetType) -> f64 {
+        let utc = self.get_moonset_utc(rise_set_type);
+        if utc == 0.0 {
+            0.0
+        } else {
+            utc + self.observer.timezone / 24.0
+        }
+    }
+
+    fn get_moon_event_str<F>(
+        &self,
+        rise_set_type: RiseSetType,
+        format: Option<&str>,
+        event_fn: F,
+        never_message: &str,
+    ) -> String
+    where
+        F: Fn(&Self, RiseSetType) -> f64,
+    {
+        let event_time = event_fn(self, rise_set_type);
+        if event_time == 0.0 {
+            never_message.to_string()
+        } else {
+            Time::from_jd(event_time).to_string(format)
+        }
+    }
+
+    pub fn get_moonrise_utc_str(&self, rise_set_type: RiseSetType, format: Option<&str>) -> String {
+        self.get_moon_event_str(rise_set_type, format, Moon::get_moonrise_utc, "Never Rises")
+    }
+
+    pub fn get_moonrise_local_str(&self, rise_set_type: RiseSetType, format: Option<&str>) -> String {
+        self.get_moon_event_str(rise_set_type, format, Moon::get_moonrise_local, "Never Rises")
+    }
+
+    pub fn get_moonset_utc_str(&self, rise_set_type: RiseSetType, format: Option<&str>) -> String {
+        self.get_moon_event_str(rise_set_type, format, Moon::get_moonset_utc, "Never Sets")
+    }
+
+    pub fn get_moonset_local_str(&self, rise_set_type: RiseSetType, format: Option<&str>) -> String {
+        self.get_moon_event_str(rise_set_type, format, Moon::get_moonset_local, "Never Sets")
+    }
+}
+

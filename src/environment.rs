@@ -20,20 +20,79 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 
-// TODO remove before release
+// TODO Implement test
 #![allow(dead_code, unused_variables)]
 
-#[derive(Debug, Copy, Clone, Default)]
+use serde::{Deserialize, Deserializer};
+
+#[derive(Debug, Deserialize)]
 pub struct Environment {
-    pub pressure: i64,
+    #[serde(default = "default_temperature", deserialize_with = "deserialize_temperature")]
     pub temperature: i64,
-    pub relative_humidity: i64
+    #[serde(default = "default_humidity", deserialize_with = "deserialize_humidity")]
+    pub humidity: i64,
+    #[serde(default = "default_pressure", deserialize_with = "deserialize_pressure")]
+    pub pressure: i64,
+}
+
+// Default value functions for Environment fields
+pub fn default_temperature() -> i64 {
+    20
+}
+
+pub fn default_humidity() -> i64 {
+    50
+}
+
+pub fn default_pressure() -> i64 {
+    1010
+}
+
+fn deserialize_temperature<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<i64> = Option::deserialize(deserializer)?;
+    // If the value is None (either missing or null), use the default value
+    match value {
+        Some(value) => Ok(value),
+        None => Ok(default_temperature()), // Use the default value
+    }
+}
+
+fn deserialize_humidity<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<i64> = Option::deserialize(deserializer)?;
+    // If the value is None (either missing or null), use the default value
+    match value {
+        Some(value) => Ok(value),
+        None => Ok(default_humidity()), // Use the default value
+    }
+}
+
+fn deserialize_pressure<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<i64> = Option::deserialize(deserializer)?;
+    // If the value is None (either missing or null), use the default value
+    match value {
+        Some(value) => Ok(value),
+        None => Ok(default_pressure()), // Use the default value
+    }
 }
 
 impl Environment {
-    pub fn new() -> Self {Self::default()}
+    pub fn new(self, pressure: i64, temperature: i64, humidity: i64) -> Environment {
+        Environment {pressure, temperature, humidity, ..self}
+    }
+}
 
-    pub fn environment(self, pressure: i64, temperature: i64, relative_humidity: i64) -> Self {
-        Self {pressure, temperature, relative_humidity, ..self}
+impl std::fmt::Display for Environment {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(f, "temperature: {} C, humidity: {} %, pressure: {} mbar",
+                   self.temperature, self.humidity, self.pressure)
     }
 }

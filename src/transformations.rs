@@ -24,18 +24,19 @@
 #![allow(dead_code, unused_variables)]
 
 use libm::atan2;
-use crate::datetime::mean_sidereal_time_greenwich;
+use crate::time::Time;
 use crate::utils::{constrain_360, sind, cosd};
 
 
 // in degrees
-pub fn hour_angle(lon: f64, ra: f64, y: i64, m: i64, d: f64) -> f64 {
-    constrain_360(mean_sidereal_time_greenwich(y, m, d) + lon - ra)
+pub fn hour_angle(lon: f64, ra: f64, y: i64, m: u64, d: u64, h: u64, min: u64, s: u64) -> f64 {
+    let date = Time::new(y, m, d, h, min, s);
+    constrain_360(date.to_gst() + lon - ra)
 }
 
 // azimuth reckoned from north
-pub fn equatorial_to_altaz(lat: f64, lon: f64, ra: f64, dec: f64, y: i64, m:i64, d: f64) -> (f64, f64) {
-    let ha = hour_angle(lon, ra, y, m, d);
+pub fn equatorial_to_altaz(lat: f64, lon: f64, ra: f64, dec: f64, y: i64, m:u64, d: u64, h: u64, min: u64, s: u64) -> (f64, f64) {
+    let ha = hour_angle(lon, ra, y, m, d, h, min, s);
     let x = -cosd(ha) * cosd(dec) * sind(lat) + sind(dec) * cosd(lat);
     let y = -sind(ha) * cosd(dec);
     let z = cosd(ha) * cosd(dec) * cosd(lat) + sind(dec) * sind(lat);

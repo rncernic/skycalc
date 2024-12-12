@@ -51,15 +51,6 @@ pub fn round_float(value: f64, num_digits: f64) -> f64 {
     (value * 10_f64.powf(num_digits)).round() / 10_f64.powf(num_digits)
 }
 
-// TODO: Should be eliminated after refactoring is finished
-pub fn interpolate(xs: (f64, f64, f64), mut n: f64, dt: f64) -> f64 {
-    n += dt / 86_400.0;
-    let a = xs.1 - xs.0;
-    let b = xs.2 - xs.1;
-    let c = b - a; //xs.0 + xs.2 - 2.0 * xs.1;
-    xs.1 + 0.5 * n * (a + b + n * c)
-}
-
 // Do linear interpolation between two ``altitudes`` at two times to determine the time when the
 // altitude goes through zero.
 //
