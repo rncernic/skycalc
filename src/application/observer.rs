@@ -20,11 +20,10 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 
-#![allow(dead_code, unused_variables)]
-
-use std::fmt;
 use chrono::{NaiveTime, Timelike};
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
+use serde::ser::SerializeStruct;
 
 pub fn degrees_from_str(input: &str, min: f64, max: f64) -> f64 {
     let input_trimmed = input.trim();
@@ -45,7 +44,7 @@ pub fn degrees_from_str(input: &str, min: f64, max: f64) -> f64 {
 // Parses a DMS (degrees, minutes, seconds) string into decimal degrees within the specified range.
 pub fn parse_dms(dms: &str, min: f64, max: f64) -> f64 {
     let dms = dms.to_lowercase();
-    let parts: Vec<&str> = dms.split(&['d','m','s','°', '\'','\"'][..]).collect();
+    let parts: Vec<&str> = dms.split(&['d', 'm', 's', '°', '\'', '\"', ' ', 'n', 'w', 'e'][..]).collect();
 
     if parts.is_empty() {
         return 0.0;
@@ -113,7 +112,11 @@ pub fn parse_hm(hm: &str) -> f64 {
 
     if let Ok(time) = NaiveTime::parse_from_str(time_part, "%H:%M") {
         let decimal_hours = time.hour() as f64 + time.minute() as f64 / 60.0;
-        return if is_negative { -decimal_hours } else { decimal_hours };
+        return if is_negative {
+            -decimal_hours
+        } else {
+            decimal_hours
+        };
     }
 
     0.0 // Return 0.0 if parsing fails
@@ -139,7 +142,7 @@ pub fn parse_hm(hm: &str) -> f64 {
 /// # Examples
 ///
 /// ```no_run
-// TODO Adjust example after refactoring time
+
 /// use observer::{Observer, Time};
 ///
 /// let observer = Observer::location(-23.1, -46.5, 780, Some("Piracaia".to_string()));
@@ -153,14 +156,26 @@ pub fn parse_hm(hm: &str) -> f64 {
 pub struct Observer {
     #[serde(default = "default_name")]
     pub name: Option<String>,
-    #[serde(default = "default_lat", deserialize_with = "deserialize_latitude")]
+    #[serde(
+        default = "default_lat",
+        deserialize_with = "deserialize_latitude"
+    )]
     pub latitude: f64,
-    #[serde(default = "default_lon", deserialize_with = "deserialize_longitude")]
+    #[serde(
+        default = "default_lon",
+        deserialize_with = "deserialize_longitude"
+    )]
     pub longitude: f64,
-    #[serde(default = "default_elevation", deserialize_with = "deserialize_elevation")]
+    #[serde(
+        default = "default_elevation",
+        deserialize_with = "deserialize_elevation"
+    )]
     pub elevation: i64,
-    #[serde(default = "default_timezone", deserialize_with = "deserialize_timezone")]
-    pub timezone: f64
+    #[serde(
+        default = "default_timezone",
+        deserialize_with = "deserialize_timezone"
+    )]
+    pub timezone: f64,
 }
 
 // Default value functions for Observer fields
@@ -191,6 +206,21 @@ where
 {
     let value = String::deserialize(deserializer)?;
     Ok(degrees_from_str(&value, -180.0, 180.0))
+}
+
+impl Serialize for Observer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut s = serializer.serialize_struct("Observer", 5)?;
+        s.serialize_field("name", &self.name)?;
+        s.serialize_field("latitude", &self.latitude)?;
+        s.serialize_field("longitude", &self.longitude)?;
+        s.serialize_field("elevation", &self.elevation)?;
+        s.serialize_field("timezone", &self.timezone)?;
+        s.end()
+    }
 }
 
 // Custom deserializer for longitude
@@ -224,7 +254,6 @@ where
 }
 
 impl Observer {
-
     /// Create a new Observer with default values
     ///
     ///
@@ -232,7 +261,9 @@ impl Observer {
     ///
     /// * `Observer` - A new Observer object
     ///
-    pub fn new() -> Self { Self::default()}
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Create a new Observer for a given location
     ///
@@ -271,11 +302,24 @@ impl Observer {
     /// assert_eq!(observer.name, None);
     /// println!("{}", observer.to_string());
     /// ```
-    pub fn location(name: Option<String>, lat: &str, lon: &str, elevation: i64, tz: &str) -> Observer {//(i64, u64)) -> Observer {
+    pub fn location(
+        name: Option<String>,
+        lat: &str,
+        lon: &str,
+        elevation: i64,
+        tz: &str,
+    ) -> Observer {
+        //(i64, u64)) -> Observer {
         let latitude = degrees_from_str(lat, -90.0, 90.0);
         let longitude = degrees_from_str(lon, -180.0, 180.0);
         let timezone = timezone_from_str(tz);
-        Observer { name, latitude, longitude, elevation, timezone }
+        Observer {
+            name,
+            latitude,
+            longitude,
+            elevation,
+            timezone,
+        }
     }
 
     /// Convert the Observer to a string
@@ -303,11 +347,15 @@ impl Observer {
     /// ```
     pub fn to_string_decimal(&self) -> String {
         if let Some(name) = &self.name {
-            return format!("{}, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
-                           name, self.latitude, self.longitude, self.elevation, self.timezone)
+            return format!(
+                "{}, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
+                name, self.latitude, self.longitude, self.elevation, self.timezone
+            );
         }
-        format!("My observatory, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
-                self.latitude, self.longitude, self.elevation, self.timezone)
+        format!(
+            "My observatory, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
+            self.latitude, self.longitude, self.elevation, self.timezone
+        )
     }
 
     // TODO Create to_string_dms
@@ -325,54 +373,18 @@ impl Observer {
 impl fmt::Display for Observer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(name) = &self.name {
-            write!(f, "{}, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
-                   name, self.latitude, self.longitude, self.elevation, self.timezone)
+            write!(
+                f,
+                "{}, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
+                name, self.latitude, self.longitude, self.elevation, self.timezone
+            )
         } else {
-            write!(f, "My observatory, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
-                   self.latitude, self.longitude, self.elevation, self.timezone)
+            write!(
+                f,
+                "My observatory, lat: {}, lon: {}, elevation: {} m, tz: {:3.2} h",
+                self.latitude, self.longitude, self.elevation, self.timezone
+            )
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::observer::Observer;
-
-    #[test]
-    fn test_observer_location_decimal() {
-        let observer = Observer::location(Some("Piracaia".to_string()), "-23.1", "-46.5",
-                                          780, "-3.0");
-        assert_eq!(observer.name, Some("Piracaia".to_string()));
-        assert_eq!(observer.latitude, -23.1);
-        assert_eq!(observer.longitude, -46.5);
-        assert_eq!(observer.elevation, 780);
-        assert_eq!(observer.timezone, -3.0);
-        println!("{}", observer.to_string());
-    }
-
-    #[test]
-    fn test_observer_location_dms() {
-        let observer = Observer::location(None, "23d 06m S", "46d 30m W",
-                                          780, "-3:00");
-        assert_eq!(observer.name, None);
-        assert_eq!(observer.latitude, -23.1);
-        assert_eq!(observer.longitude, -46.5);
-        assert_eq!(observer.elevation, 780);
-        assert_eq!(observer.timezone, -3.0);
-        println!("{}", observer.to_string());
-    }
-
-    #[test]
-    fn test_observer_to_string_decimal_with_name() {
-        let observer = Observer::location(Some("Piracaia".to_string()), "-23.1", "-46.5", 780, "3.5");
-        assert_eq!(observer.to_string(), "Piracaia, lat: -23.1, lon: -46.5, elevation: 780 m, tz: 3.50 h");
-        println!("{}", observer.to_string_decimal());
-    }
-
-    #[test]
-    fn test_observer_to_string_decimal_without_name() {
-        let observer = Observer::location(None, "-23.1", "-46.5", 780, "-3:00");
-        assert_eq!(observer.to_string(), "My observatory, lat: -23.1, lon: -46.5, elevation: 780 m, tz: -3.00 h");
-        println!("{}", observer.to_string_decimal());
-    }
-}

@@ -1,26 +1,26 @@
 
 ------------------------------------------------------------------------------------------
-SkyCalc v.0.0.2 alpha
+SkyCalc v.0.0.3
 ------------------------------------------------------------------------------------------
 
 Observatory:
-   - Piracaia - SP - Brazil, lat: -23.1, lon: -46.5, elevation: 780 m, tz: -3.00 h
+   - Piracaia - SP - Brazil, lat: -23.001666666666665, lon: -46.00833333333333, elevation: 780 m, tz: -3.00 h
    - temperature: 25 C, humidity: 45 %, pressure: 1020 mbar
 
-Info for night:  2024-12-11 to 2024-12-12 in local time
+Info for night:  2025-03-12 to 2025-03-13 in local time
 
 Sun:
-   - Set                     : 11-12 18:45   Rise  : 12-12 05:13   
-   - Civil Tw end            : 11-12 19:10   start : 12-12 04:48   
-   - Nautical Tw end         : 11-12 19:40   start : 12-12 04:18   
-   - Astronomical Tw end     : 11-12 20:12   start : 12-12 03:47   
+   - Set                     : 12-03 18:22   Rise  : 12-03 06:04   
+   - Civil Tw end            : 12-03 18:44   start : 13-03 05:42   
+   - Nautical Tw end         : 12-03 19:11   start : 13-03 05:16   
+   - Astronomical Tw end     : 12-03 19:37   start : 13-03 04:49   
 
 Moon:
-   - Rise                    : 11-12 15:00   Set   : 12-12 02:29   
+   - Rise                    : 12-03 17:36   Set   : 13-03 05:22   
 
 Darkness:
-   - DSO Astronomical   start: 12-12 02:29   end   : 12-12 03:46
-   - DSO Nautical       start: 12-12 02:29   end   : 12-12 04:18
+   - DSO Astronomical   start: 01-01 12:00   end   : 01-01 12:00
+   - DSO Nautical       start: 01-01 12:00   end   : 01-01 12:00
 
-   - NB  Astronomical   start: 11-12 20:12   end   : 12-12 03:47
-   - NB  Nautical       start: 11-12 19:40   end   : 12-12 04:18
+   - NB  Astronomical   start: 12-03 19:37   end   : 13-03 04:49
+   - NB  Nautical       start: 12-03 19:11   end   : 13-03 05:16

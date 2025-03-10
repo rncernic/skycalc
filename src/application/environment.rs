@@ -23,15 +23,24 @@
 // TODO Implement test
 #![allow(dead_code, unused_variables)]
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct Environment {
-    #[serde(default = "default_temperature", deserialize_with = "deserialize_temperature")]
+    #[serde(
+        default = "default_temperature",
+        deserialize_with = "deserialize_temperature"
+    )]
     pub temperature: i64,
-    #[serde(default = "default_humidity", deserialize_with = "deserialize_humidity")]
+    #[serde(
+        default = "default_humidity",
+        deserialize_with = "deserialize_humidity"
+    )]
     pub humidity: i64,
-    #[serde(default = "default_pressure", deserialize_with = "deserialize_pressure")]
+    #[serde(
+        default = "default_pressure",
+        deserialize_with = "deserialize_pressure"
+    )]
     pub pressure: i64,
 }
 
@@ -86,13 +95,21 @@ where
 
 impl Environment {
     pub fn new(self, pressure: i64, temperature: i64, humidity: i64) -> Environment {
-        Environment {pressure, temperature, humidity, ..self}
+        Environment {
+            pressure,
+            temperature,
+            humidity,
+            ..self
+        }
     }
 }
 
 impl std::fmt::Display for Environment {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(f, "temperature: {} C, humidity: {} %, pressure: {} mbar",
-                   self.temperature, self.humidity, self.pressure)
+        write!(
+            f,
+            "temperature: {} C, humidity: {} %, pressure: {} mbar",
+            self.temperature, self.humidity, self.pressure
+        )
     }
 }

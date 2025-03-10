@@ -20,14 +20,20 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 
-use std::str::FromStr;
-
 pub fn format_dms(angle: f64, is_latitude: bool) -> String {
     let mut direction = "";
     if is_latitude {
-        if angle >= 0.0 { direction = "N" } else { direction = "S" }
+        if angle >= 0.0 {
+            direction = "N"
+        } else {
+            direction = "S"
+        }
     } else {
-        if angle >= 0.0 { direction = "E" } else { direction = "W" }
+        if angle >= 0.0 {
+            direction = "E"
+        } else {
+            direction = "W"
+        }
     }
     let d = angle.trunc().abs();
     let remainder = angle.abs() - d;
@@ -62,7 +68,7 @@ impl Degrees {
     /// Parses a DMS (degrees, minutes, seconds) string into decimal degrees within the specified range.
     pub fn parse_dms(dms: &str, min: f64, max: f64) -> Self {
         let dms = dms.to_lowercase();
-        let parts: Vec<&str> = dms.split(&['d','m','s','°', '\'','\"'][..]).collect();
+        let parts: Vec<&str> = dms.split(&['d', 'm', 's', '°', '\'', '\"'][..]).collect();
 
         if parts.is_empty() {
             return Self { value: 0.0 };

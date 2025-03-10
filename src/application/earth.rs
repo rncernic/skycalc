@@ -23,7 +23,7 @@
 // TODO remove before release
 #![allow(dead_code, unused_variables)]
 
-use crate::utils::constrain_360;
+use crate::utils::utils::constrain_360;
 
 // D, M, Mprime, F, omega
 const NUTATION_ARGS: &[&[f64]] = &[
@@ -224,34 +224,38 @@ const NUTATION_COS_COEFF: &[&[f64]] = &[
     &[0.0, 0.0],
 ];
 
-
 // deltas in hours and eps0 in degrees
 pub fn nutation(t: f64) -> (f64, f64, f64) {
     //let t = jd2000_century_from_date(y, m, d);
     //mean elongation of Moon from Sun
-    let d = constrain_360(297.850_36 + 445_267.111_480 * t -
-        0.001_914_2 * t * t +
-        t * t * t / 189_474.0).to_radians();
+    let d = constrain_360(
+        297.850_36 + 445_267.111_480 * t - 0.001_914_2 * t * t + t * t * t / 189_474.0,
+    )
+    .to_radians();
 
     //mean anomaly of the Sun
-    let m = constrain_360(357.527_72 + 35_999.050_340 * t -
-        0.000_160_3 * t * t + t * t * t / 300_000.0).to_radians();
+    let m = constrain_360(
+        357.527_72 + 35_999.050_340 * t - 0.000_160_3 * t * t + t * t * t / 300_000.0,
+    )
+    .to_radians();
 
     //mean anomaly of the Moon
-    let mprime = constrain_360(134.962_98 + 477_198.867_398 * t +
-        0.008_697_2 * t * t +
-        t * t * t / 56_250.0).to_radians();
+    let mprime = constrain_360(
+        134.962_98 + 477_198.867_398 * t + 0.008_697_2 * t * t + t * t * t / 56_250.0,
+    )
+    .to_radians();
 
     //Moon's argument of latitude
-    let f = constrain_360(93.271_91 + 483_202.017_538 * t -
-        0.003_682_5 * t * t +
-        t * t * t / 327_270.0).to_radians();
+    let f = constrain_360(
+        93.271_91 + 483_202.017_538 * t - 0.003_682_5 * t * t + t * t * t / 327_270.0,
+    )
+    .to_radians();
 
     //longitude of the ascending node of the Moon's mean orbit on the
     //elliptic, measured from the mean equinox of the date.
-    let omega = constrain_360(125.044_52 - 1_934.136_261 * t +
-        0.002_070_8 * t * t +
-        t * t * t / 450_000.0).to_radians();
+    let omega =
+        constrain_360(125.044_52 - 1_934.136_261 * t + 0.002_070_8 * t * t + t * t * t / 450_000.0)
+            .to_radians();
 
     let mut delta_phi = 0.0;
     let mut delta_eps = 0.0;
@@ -267,16 +271,17 @@ pub fn nutation(t: f64) -> (f64, f64, f64) {
     delta_eps /= 1e4 * 3_600.0;
 
     //mean obliquity of the ecliptic
-    let eps0 = 23.0 + 26.0 / 60.0 + (21.448 - 46.815_0 * t - 0.000_59 * t * t +
-        0.001_813 * t * t * t) / 3_600.0;
+    let eps0 = 23.0
+        + 26.0 / 60.0
+        + (21.448 - 46.815_0 * t - 0.000_59 * t * t + 0.001_813 * t * t * t) / 3_600.0;
 
     (delta_phi, delta_eps, eps0)
 }
 
 #[cfg(test)]
-mod test{
+mod test {
+    use crate::earth::nutation;
     use assert_approx_eq::assert_approx_eq;
-    use crate::earth::{nutation};
 
     #[test]
     fn test_nutation() {
@@ -285,5 +290,4 @@ mod test{
         assert_approx_eq!(deps, 0.002_623_056, 1e-6);
         assert_approx_eq!(eps0, 23.440946389, 1e-6);
     }
-
 }

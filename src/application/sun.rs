@@ -24,40 +24,52 @@
 // TODO Create tests
 #![allow(dead_code, unused_variables)]
 
-use std::cmp::{PartialEq};
+use crate::application::{
+    environment::Environment,
+    observer::Observer,
+    time::Time,
+    transformations::equatorial_to_altaz,
+};
+use crate::utils::utils::{
+    cosd,
+    cross_horizon,
+    sind,
+    two_point_interpolation
+};
+use libm::atan2;
+use std::cmp::PartialEq;
 use std::f64::consts::PI;
-use libm::{atan2};
-use crate::environment::{Environment};
-use crate::observer::{Observer};
-use crate::time::{Time};
-use crate::utils::{sind, cosd, cross_horizon, two_point_interpolation};
-use crate::transformations::{equatorial_to_altaz};
-
 //https://en.wikipedia.org/wiki/Sunrise_equation#Complete_calculation_on_Earth
 //https://astrogreg.com/
 
 #[derive(Debug)]
 pub enum SunRS {
     NeverRise,
-    NeverSet
+    NeverSet,
 }
 
 pub fn sun_position_from_jd(jd: f64) -> (f64, f64) {
     let n = jd - 2_451_545.0;
     let mut l = (280.460 + 0.985_647_4 * n) % 360.0;
     let mut g = ((357.528 + 0.985_600_3 * n) % 360.0).to_radians();
-    if l < 0.0 {l += 360.0};
-    if g < 0.0 {g += 2. * PI};
+    if l < 0.0 {
+        l += 360.0
+    };
+    if g < 0.0 {
+        g += 2. * PI
+    };
     let lambda = (l + 1.915 * g.sin() + 0.020 * (2. * g).sin()).to_radians();
     let bet = 0.0;
     let eps = (23.439 - 0.000_000_4 * n).to_radians();
     let mut ra = atan2(eps.cos() * lambda.sin(), lambda.cos());
     let dec = (eps.sin() * lambda.sin()).asin();
-    if ra < 0.0 {ra += 2. * PI};
+    if ra < 0.0 {
+        ra += 2. * PI
+    };
     (ra.to_degrees(), dec.to_degrees())
 }
 
-pub fn sun_position_from_ymd(y: i64, m: u64, d: u64, h: u64, min: u64, s:u64) -> (f64, f64) {
+pub fn sun_position_from_ymd(y: i64, m: u64, d: u64, h: u64, min: u64, s: u64) -> (f64, f64) {
     let date = Time::new(y, m, d, h, min, s);
     sun_position_from_jd(date.to_jd())
 }
@@ -67,19 +79,42 @@ pub fn sun_position_from_ymd(y: i64, m: u64, d: u64, h: u64, min: u64, s:u64) ->
 pub fn sun_hour_angle(lat: f64, dec: f64) -> f64 {
     let numerator = sind(-0.833_33_f64) - sind(lat) * sind(dec);
     let denominator = cosd(lat) * cosd(dec);
-    if denominator > 1. {999.0} // never sets - always above horizon
-    else if denominator < -1. {-999.0} // never rises - always below horizon
-    else { (numerator / denominator).acos().to_degrees() }
+    if denominator > 1. {
+        999.0
+    }
+    // never sets - always above horizon
+    else if denominator < -1. {
+        -999.0
+    }
+    // never rises - always below horizon
+    else {
+        (numerator / denominator).acos().to_degrees()
+    }
 }
 
 pub fn sun_alt_az_from_jd(lat: f64, lon: f64, ra: f64, dec: f64, jd: f64) -> (f64, f64) {
     let date = Time::from_jd(jd);
-    equatorial_to_altaz(lat, lon, ra, dec, date.year, date.month, date.day, date.hour,
-                        date.minute, date.second)
+    equatorial_to_altaz(
+        lat,
+        lon,
+        ra,
+        dec,
+        date.year,
+        date.month,
+        date.day,
+        date.hour,
+        date.minute,
+        date.second,
+    )
 }
 
-pub fn sun_alt_az_grid_utc(lat: f64, lon:f64, jd_start: f64, jd_end: f64,
-                           num_points: usize) -> Vec<(f64, f64, f64)> {
+pub fn sun_alt_az_grid_utc(
+    lat: f64,
+    lon: f64,
+    jd_start: f64,
+    jd_end: f64,
+    num_points: usize,
+) -> Vec<(f64, f64, f64)> {
     // create a null grid vector with 3 columns and num_points+1 rows
     let mut grid: Vec<(f64, f64, f64)> = Vec::new();
     let inc = (jd_end - jd_start) / num_points as f64;
@@ -87,8 +122,18 @@ pub fn sun_alt_az_grid_utc(lat: f64, lon:f64, jd_start: f64, jd_end: f64,
         let jd = jd_start + inc * i as f64;
         let (ra, dec) = sun_position_from_jd(jd);
         let mut date = Time::from_jd(jd);
-        let (alt, az) = equatorial_to_altaz(lat, lon, ra, dec, date.year, date.month,
-                                            date.day, date.hour, date.minute, date.second);
+        let (alt, az) = equatorial_to_altaz(
+            lat,
+            lon,
+            ra,
+            dec,
+            date.year,
+            date.month,
+            date.day,
+            date.hour,
+            date.minute,
+            date.second,
+        );
         grid.push((jd, alt, az));
     }
     grid
@@ -103,13 +148,23 @@ pub fn sunrise_utc_grid(lat: f64, lon: f64, jd: f64, horizon: f64, tz: f64) -> R
     if v.is_empty() {
         Err(SunRS::NeverRise)
     } else {
-        Ok(two_point_interpolation(v[0].0, v[0].2, v[0].1, v[0].3, horizon))
+        Ok(two_point_interpolation(
+            v[0].0, v[0].2, v[0].1, v[0].3, horizon,
+        ))
     }
 }
 
-pub fn next_sunrise_utc(lat: f64, lon: f64, jd: f64, horizon: f64, tz: f64, max_days: u32) -> Result<f64, SunRS> {
+pub fn next_sunrise_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    horizon: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, SunRS> {
     let mut current_jd = jd;
-    for _ in 0..max_days { // Limit to 2 days of iterations
+    for _ in 0..max_days {
+        // Limit to 2 days of iterations
         match sunrise_utc_grid(lat, lon, current_jd, horizon, tz) {
             Ok(sunrise) => return Ok(sunrise),
             Err(SunRS::NeverRise) => current_jd += 1.0, // Skip to the next day
@@ -119,9 +174,17 @@ pub fn next_sunrise_utc(lat: f64, lon: f64, jd: f64, horizon: f64, tz: f64, max_
     Err(SunRS::NeverRise) // Return error if no sunrise is found within the range
 }
 
-pub fn previous_sunrise_utc(lat: f64, lon: f64, jd: f64, horizon: f64, tz: f64, max_days: u32) -> Result<f64, SunRS> {
+pub fn previous_sunrise_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    horizon: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, SunRS> {
     let mut current_jd = jd - 1.0;
-    for _ in 0..max_days { // Limit to 2 days of iterations
+    for _ in 0..max_days {
+        // Limit to 2 days of iterations
         match sunrise_utc_grid(lat, lon, current_jd, horizon, tz) {
             Ok(sunrise) => return Ok(sunrise),
             Err(SunRS::NeverRise) => current_jd -= 1.0, // Skip to the next day
@@ -131,7 +194,14 @@ pub fn previous_sunrise_utc(lat: f64, lon: f64, jd: f64, horizon: f64, tz: f64, 
     Err(SunRS::NeverRise) // Return error if no sunrise is found within the range
 }
 
-pub fn nearest_sunrise_utc(lat: f64, lon: f64, jd: f64, horizon: f64, tz: f64, max_days: u32) -> Result<f64, SunRS> {
+pub fn nearest_sunrise_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    horizon: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, SunRS> {
     let next = next_sunrise_utc(lat, lon, jd, horizon, tz, max_days); // max_days window
     let previous = previous_sunrise_utc(lat, lon, jd, horizon, tz, max_days); // max_days window
 
@@ -159,13 +229,23 @@ pub fn sunset_utc_grid(lat: f64, lon: f64, jd: f64, horizon: f64, tz: f64) -> Re
     if v.is_empty() {
         Err(SunRS::NeverSet)
     } else {
-        Ok(two_point_interpolation(v[0].0, v[0].2, v[0].1, v[0].3, horizon))
+        Ok(two_point_interpolation(
+            v[0].0, v[0].2, v[0].1, v[0].3, horizon,
+        ))
     }
 }
 
-pub fn next_sunset_utc(lat: f64, lon: f64, jd: f64, horizon: f64, tz: f64, max_days: u32) -> Result<f64, SunRS> {
+pub fn next_sunset_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    horizon: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, SunRS> {
     let mut current_jd = jd;
-    for _ in 0..max_days { // Limit to 2 days of iterations
+    for _ in 0..max_days {
+        // Limit to 2 days of iterations
         match sunset_utc_grid(lat, lon, current_jd, horizon, tz) {
             Ok(sunset) => return Ok(sunset),
             Err(SunRS::NeverSet) => current_jd += 1.0, // Skip to the next day
@@ -175,9 +255,17 @@ pub fn next_sunset_utc(lat: f64, lon: f64, jd: f64, horizon: f64, tz: f64, max_d
     Err(SunRS::NeverSet) // Return error if no sunset is found within the range
 }
 
-pub fn previous_sunset_utc(lat: f64, lon: f64, jd: f64, horizon: f64, tz: f64, max_days: u32) -> Result<f64, SunRS> {
+pub fn previous_sunset_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    horizon: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, SunRS> {
     let mut current_jd = jd - 1.0;
-    for _ in 0..max_days { // Limit to 2 days of iterations
+    for _ in 0..max_days {
+        // Limit to 2 days of iterations
         match sunset_utc_grid(lat, lon, current_jd, horizon, tz) {
             Ok(sunset) => return Ok(sunset),
             Err(SunRS::NeverSet) => current_jd -= 1.0, // Skip to the next day
@@ -187,7 +275,14 @@ pub fn previous_sunset_utc(lat: f64, lon: f64, jd: f64, horizon: f64, tz: f64, m
     Err(SunRS::NeverSet) // Return error if no sunset is found within the range
 }
 
-pub fn nearest_sunset_utc(lat: f64, lon: f64, jd:f64, horizon: f64, tz: f64, max_days: u32) -> Result<f64, SunRS> {
+pub fn nearest_sunset_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    horizon: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, SunRS> {
     let next = next_sunset_utc(lat, lon, jd, horizon, tz, max_days);
     let previous = previous_sunset_utc(lat, lon, jd, horizon, tz, max_days);
 
@@ -205,11 +300,11 @@ pub fn nearest_sunset_utc(lat: f64, lon: f64, jd:f64, horizon: f64, tz: f64, max
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sun<'a> {
     pub observer: &'a Observer,
     pub time: &'a Time,
-    pub environment: &'a Environment
+    pub environment: &'a Environment,
 }
 
 #[derive(Debug)]
@@ -252,14 +347,18 @@ impl RiseSetType {
         match self {
             RiseSetType::Nearest => "Nearest",
             RiseSetType::Next => "Next",
-            RiseSetType::Previous=> "Previous"
+            RiseSetType::Previous => "Previous",
         }
     }
 }
 
 impl<'a> Sun<'a> {
     pub fn new(observer: &'a Observer, time: &'a Time, environment: &'a Environment) -> Sun<'a> {
-        Sun { observer, time, environment }
+        Sun {
+            observer,
+            time,
+            environment,
+        }
     }
 
     fn get_sun_event_utc<F>(
@@ -281,12 +380,15 @@ impl<'a> Sun<'a> {
         let timezone = self.observer.timezone;
 
         match rise_set_type {
-            RiseSetType::Nearest => nearest_fn(latitude, longitude, jd, angle, timezone, MAX_DAYS)
-                .unwrap_or(0.0),
-            RiseSetType::Next => next_fn(latitude, longitude, jd, angle, timezone, MAX_DAYS)
-                .unwrap_or(0.0),
-            RiseSetType::Previous => previous_fn(latitude, longitude, jd, angle, timezone, MAX_DAYS)
-                .unwrap_or(0.0),
+            RiseSetType::Nearest => {
+                nearest_fn(latitude, longitude, jd, angle, timezone, MAX_DAYS).unwrap_or(0.0)
+            }
+            RiseSetType::Next => {
+                next_fn(latitude, longitude, jd, angle, timezone, MAX_DAYS).unwrap_or(0.0)
+            }
+            RiseSetType::Previous => {
+                previous_fn(latitude, longitude, jd, angle, timezone, MAX_DAYS).unwrap_or(0.0)
+            }
         }
     }
 
@@ -347,19 +449,63 @@ impl<'a> Sun<'a> {
         }
     }
 
-    pub fn get_sunrise_utc_str(&self, rise_set_type: RiseSetType, twilight: TwilightType, format: Option<&str>) -> String {
-        self.get_sun_event_str(rise_set_type, twilight, format, Sun::get_sunrise_utc, "Never Rises")
+    pub fn get_sunrise_utc_str(
+        &self,
+        rise_set_type: RiseSetType,
+        twilight: TwilightType,
+        format: Option<&str>,
+    ) -> String {
+        self.get_sun_event_str(
+            rise_set_type,
+            twilight,
+            format,
+            Sun::get_sunrise_utc,
+            "Never Rises",
+        )
     }
 
-    pub fn get_sunrise_local_str(&self, rise_set_type: RiseSetType, twilight: TwilightType, format: Option<&str>) -> String {
-        self.get_sun_event_str(rise_set_type, twilight, format, Sun::get_sunrise_local, "Never Rises")
+    pub fn get_sunrise_local_str(
+        &self,
+        rise_set_type: RiseSetType,
+        twilight: TwilightType,
+        format: Option<&str>,
+    ) -> String {
+        self.get_sun_event_str(
+            rise_set_type,
+            twilight,
+            format,
+            Sun::get_sunrise_local,
+            "Never Rises",
+        )
     }
 
-    pub fn get_sunset_utc_str(&self, rise_set_type: RiseSetType, twilight: TwilightType, format: Option<&str>) -> String {
-        self.get_sun_event_str(rise_set_type, twilight, format, Sun::get_sunset_utc, "Never Sets")
+    pub fn get_sunset_utc_str(
+        &self,
+        rise_set_type: RiseSetType,
+        twilight: TwilightType,
+        format: Option<&str>,
+    ) -> String {
+        self.get_sun_event_str(
+            rise_set_type,
+            twilight,
+            format,
+            Sun::get_sunset_utc,
+            "Never Sets",
+        )
     }
 
-    pub fn get_sunset_local_str(&self, rise_set_type: RiseSetType, twilight: TwilightType, format: Option<&str>) -> String {
-        self.get_sun_event_str(rise_set_type, twilight, format, Sun::get_sunset_local, "Never Sets")
+    pub fn get_sunset_local_str(
+        &self,
+        rise_set_type: RiseSetType,
+        twilight: TwilightType,
+        format: Option<&str>,
+    ) -> String {
+        self.get_sun_event_str(
+            rise_set_type,
+            twilight,
+            format,
+            Sun::get_sunset_local,
+            "Never Sets",
+        )
     }
 }

@@ -22,21 +22,23 @@
 
 use std::fs::File;
 use std::io::Write;
-use crate::constraint::Constraints;
-use crate::darkness::{Darkness};
-use crate::environment::Environment;
-use crate::moon::Moon;
-use crate::observer::Observer;
-use crate::sun::RiseSetType::{Nearest, Next, Previous};
-use crate::sun::Sun;
-use crate::sun::TwilightType::{AstronomicalTwilight, CivilTwilight, NauticalTwilight, RiseSet};
-use crate::time::Time;
-use crate::version::VERSION;
+use crate::application::{
+    constraint::Constraints,
+    darkness::{Darkness},
+    environment::Environment,
+    moon::Moon,
+    observer::Observer,
+    sun::RiseSetType::{Nearest, Next, Previous},
+    sun::Sun,
+    sun::TwilightType::{AstronomicalTwilight, CivilTwilight, NauticalTwilight, RiseSet},
+    time::Time,
+};
+use crate::utils::definers::APP_VERSION;
 
 pub(crate) fn header_section() -> Vec<String> {
     let mut header: Vec<String> = Vec::new();
     header.push("\n------------------------------------------------------------------------------------------".to_string());
-    header.push(format!("\nSkyCalc v.{}", VERSION));
+    header.push(format!("\nSkyCalc v.{}", APP_VERSION));
     header.push("\n------------------------------------------------------------------------------------------".to_string());
     header.push("\n\n".to_string());
     header

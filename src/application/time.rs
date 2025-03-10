@@ -20,14 +20,12 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 
-// TODO Implement test
-#![allow(dead_code, unused_variables)]
-
+use chrono::{
+    DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, TimeZone,
+    Timelike, Utc,
+};
 use core::option::Option;
-use chrono::{DateTime, Datelike, Timelike,
-             Utc, TimeZone, NaiveDateTime,
-             NaiveDate, NaiveTime, FixedOffset, Local};
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Time struct
 ///
@@ -69,14 +67,14 @@ use serde::{Deserialize, Deserializer};
 /// assert_eq!(date.minute, 0);
 /// assert_eq!(date.second, 0);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Time {
     pub year: i64,
     pub month: u64,
     pub day: u64,
     pub hour: u64,
     pub minute: u64,
-    pub second: u64
+    pub second: u64,
 }
 
 // Parse from a date-time string, defaulting to current time if empty
@@ -88,7 +86,9 @@ pub fn from_str_or_now(timestamp_str: &str) -> Time {
     let datetime_formats: Vec<String> = date_formats
         .iter()
         .flat_map(|&date_fmt| {
-            time_formats.iter().map(move |&time_fmt| format!("{} {}", date_fmt, time_fmt))
+            time_formats
+                .iter()
+                .map(move |&time_fmt| format!("{} {}", date_fmt, time_fmt))
         })
         .collect();
 
@@ -204,7 +204,7 @@ impl Time {
             day,
             hour,
             minute,
-            second
+            second,
         }
     }
 
@@ -302,7 +302,7 @@ impl Time {
             day: utc.day() as u64,
             hour: utc.hour() as u64,
             minute: utc.minute() as u64,
-            second: utc.second() as u64
+            second: utc.second() as u64,
         }
     }
 
@@ -357,11 +357,11 @@ impl Time {
 
         Time {
             year: year as i64,
-            month: month  as u64,
-            day: day  as u64,
-            hour: hour  as u64,
-            minute: minute  as u64,
-            second: second  as u64
+            month: month as u64,
+            day: day as u64,
+            hour: hour as u64,
+            minute: minute as u64,
+            second: second as u64,
         }
     }
 
@@ -417,7 +417,9 @@ impl Time {
         let second = self.second as f64;
 
         let jd = 367.0 * year - ((year + ((month + 9.0) / 12.0)).floor() * 7.0 / 4.0).floor()
-            + ((275.0 * month) / 9.0).floor() + day + 1721013.5
+            + ((275.0 * month) / 9.0).floor()
+            + day
+            + 1721013.5
             + ((hour + (minute / 60.0) + (second / 3600.0)) / 24.0);
         jd
     }
@@ -460,8 +462,7 @@ impl Time {
     pub fn to_gst(&self) -> f64 {
         let jd = self.to_jd();
         let t = (jd - 2451545.0) / 36525.0;
-        let gst = 280.46061837 + 360.98564736629 * (jd - 2451545.0)
-            + 0.000387933 * t * t
+        let gst = 280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.000387933 * t * t
             - (t * t * t) / 38710000.0;
         gst % 360.0
     }
@@ -491,7 +492,8 @@ impl Time {
             self.hour as u32,
             self.minute as u32,
             self.second as u32,
-        ).unwrap()
+        )
+            .unwrap()
     }
 
     pub fn to_hhmm(&self) -> String {
@@ -503,7 +505,10 @@ impl Time {
     }
 
     pub fn to_short(&self) -> String {
-        format!("{:02}-{:02} {:02}:{:02}", self.day, self.month, self.hour, self.minute)
+        format!(
+            "{:02}-{:02} {:02}:{:02}",
+            self.day, self.month, self.hour, self.minute
+        )
     }
 
     // TODO Add local time
@@ -553,7 +558,7 @@ impl Time {
                 self.to_hhmm()
             } else if format == "yyyymmdd" {
                 self.to_yyyymmdd()
-            } else if format == "short"{
+            } else if format == "short" {
                 self.to_short()
             } else {
                 return "Invalid format".to_string();
@@ -562,11 +567,26 @@ impl Time {
             self.to_utc().to_string()
         }
     }
+
+    pub fn get_day(&self) -> u32 {
+        self.day as u32
+    }
+
+    pub fn get_month(&self) -> u32 {
+        self.month as u32
+    }
+
+    pub fn get_year(&self) -> u32 {
+        self.year as u32
+    }
 }
 
 impl std::fmt::Display for Time {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}-{:02}-{:02} {:02}:{:02}:{:02}",
-               self.year, self.month, self.day, self.hour, self.minute, self.second)
+        write!(
+            f,
+            "{}-{:02}-{:02} {:02}:{:02}:{:02}",
+            self.year, self.month, self.day, self.hour, self.minute, self.second
+        )
     }
 }

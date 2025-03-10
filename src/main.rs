@@ -1,104 +1,177 @@
-// The MIT License (MIT)
-//
-// Copyright (c) 2024 Ricardo Cernic
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to
-// deal in the Software without restriction, including without limitation the
-// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-// sell copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-// IN THE SOFTWARE.
-
-// https://github.com/boom-astro/flare/tree/main
-
-// TODO Create txt report
-// TODO Check for extreme latitudes
-// TODO Implement targets
-
-#![allow(dead_code, unused_variables)]
-
-mod observer;
-mod time;
-mod environment;
-mod constraint;
-mod config;
-mod version;
-mod reports;
-mod darkness;
-mod sun;
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod application;
+mod menu;
 mod utils;
-mod transformations;
-mod moon;
-mod earth;
+mod widgets;
 
-use std::time::{SystemTime, UNIX_EPOCH};
-use chrono::{TimeZone, Utc};
-use simple_logger as sl;
-use observer::Observer;
-use time::{Time};
-use crate::config::{load_from_yaml};
-use crate::darkness::{Darkness};
-use crate::environment::{Environment};
-use crate::moon::{Moon};
-use crate::reports::{darkness_report};
-use crate::sun::{Sun};
-use crate::sun::RiseSetType::{Nearest, Next, Previous};
-use crate::sun::TwilightType::{AstronomicalTwilight, CivilTwilight, NauticalTwilight, RiseSet};
+use crate::application::application::{load_from_yaml, save_to_yaml, Application};
+use fltk::{app, enums::Shortcut, menu::MenuBar, menu::MenuFlag, prelude::*, window::Window};
+use fltk_theme::{color_themes, ColorTheme, ThemeType, WidgetTheme};
+use menu::about;
+use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use std::io::Write;
+use std::rc::Rc;
+use utils::definers::{APP_TITLE, MENU_HEIGHT};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Init log
-    sl::init().expect("Unable to init logger");
+    let app = app::App::default().with_scheme(app::Scheme::Gtk);
 
-    // Start counting time to evaluate performance
-    let p_start = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    // start with the initial dark theme
+    let theme = ColorTheme::new(color_themes::BLACK_THEME);
+    theme.apply();
 
-    let (observer, time, environment, constraints) = load_from_yaml("config.yaml")?;
-    let sun = Sun::new(&observer, &time, &environment);
-    let moon = Moon::new(&observer, &time, &environment);
+    let application = Rc::new(RefCell::new(Application::default()));
 
-    log::info!("Observer        {:?}", observer.to_string_decimal());
-    log::info!("Time            {:?}", time.to_string(Some("utc")));
-    log::info!("Environment     {:?}", environment.to_string());
-    log::info!("Constraints     {:?}", constraints.to_string());
+    let mut wind = Window::default()
+        .with_size(800, 600)
+        .with_label(APP_TITLE)
+        .center_screen();
 
-    log::info!("*** Sunrise / Sunset ***");
-    log::info!("--- Next ---");
-    log::info!("RiseSet         {:?}  {:?}", sun.get_sunrise_utc_str(Next, RiseSet, Some("utc")), sun.get_sunset_utc_str(Next, RiseSet, Some("utc")));
-    log::info!("Civil Tw        {:?}  {:?}", sun.get_sunrise_utc_str(Next, CivilTwilight, Some("utc")), sun.get_sunset_utc_str(Next, CivilTwilight, Some("utc")));
-    log::info!("Nautical Tw     {:?}  {:?}", sun.get_sunrise_utc_str(Next, NauticalTwilight, Some("utc")), sun.get_sunset_utc_str(Next, NauticalTwilight, Some("utc")));
-    log::info!("Astronomical Tw {:?}  {:?}", sun.get_sunrise_utc_str(Next, AstronomicalTwilight, Some("utc")), sun.get_sunset_utc_str(Next, AstronomicalTwilight, Some("utc")));
-    log::info!("--- Previous ---");
-    log::info!("RiseSet         {:?}  {:?}", sun.get_sunrise_utc_str(Previous, RiseSet, Some("utc")), sun.get_sunset_utc_str(Previous, RiseSet, Some("utc")));
-    log::info!("Civil Tw        {:?}  {:?}", sun.get_sunrise_utc_str(Previous, CivilTwilight, Some("utc")), sun.get_sunset_utc_str(Previous, CivilTwilight, Some("utc")));
-    log::info!("Nautical Tw     {:?}  {:?}", sun.get_sunrise_utc_str(Previous, NauticalTwilight, Some("utc")), sun.get_sunset_utc_str(Previous, NauticalTwilight, Some("utc")));
-    log::info!("Astronomical Tw {:?}  {:?}", sun.get_sunrise_utc_str(Previous, AstronomicalTwilight, Some("utc")), sun.get_sunset_utc_str(Previous, AstronomicalTwilight, Some("utc")));
-    log::info!("--- Nearest ---");
-    log::info!("RiseSet         {:?}  {:?}", sun.get_sunrise_utc_str(Nearest, RiseSet, Some("utc")), sun.get_sunset_utc_str(Nearest, RiseSet, Some("utc")));
-    log::info!("Civil Tw        {:?}  {:?}", sun.get_sunrise_utc_str(Nearest, CivilTwilight, Some("utc")), sun.get_sunset_utc_str(Nearest, CivilTwilight, Some("utc")));
-    log::info!("Nautical Tw     {:?}  {:?}", sun.get_sunrise_utc_str(Nearest, NauticalTwilight, Some("utc")), sun.get_sunset_utc_str(Nearest, NauticalTwilight, Some("utc")));
-    log::info!("Astronomical Tw {:?}  {:?}", sun.get_sunrise_utc_str(Nearest, AstronomicalTwilight, Some("utc")), sun.get_sunset_utc_str(Nearest, AstronomicalTwilight, Some("utc")));
+    let mut menu = MenuBar::new(0, 0, 800, MENU_HEIGHT, "");
 
-    log::info!("*** Moon rise / set ***");
-    log::info!("Next            {:?}  {:?}", moon.get_moonrise_utc_str(Next, Some("utc")), moon.get_moonset_utc_str(Next, Some("utc")));
-    log::info!("Previous        {:?}  {:?}", moon.get_moonrise_utc_str(Previous, Some("utc")), moon.get_moonset_utc_str(Previous, Some("utc")));
-    log::info!("Nearest         {:?}  {:?}", moon.get_moonrise_utc_str(Nearest, Some("utc")), moon.get_moonset_utc_str(Nearest, Some("utc")));
+    // Window call back to avoid program termination when ESC is pressed
+    // from FLTK Book - FAQ
+    wind.set_callback(|_| {
+        if fltk::app::event() == fltk::enums::Event::Close {
+            menu::file::exit::handle_exit();
+        }
+    });
 
-    darkness_report(&observer, &time, &environment);
+    // File -> Config -> load
+    let mut application_load_conf = Rc::clone(&application);
+    menu.add(
+        "&File/&Configuration",
+        Shortcut::None,
+        MenuFlag::Submenu,
+        |_| {}
+    );
 
-    let p_end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    log::debug!("Execution time: {:?}", p_end - p_start);
+    menu.add(
+        "File/Configuration/&Load\t",
+        Shortcut::Ctrl | 'l',
+        MenuFlag::Normal,
+        move |_| {
+            menu::file::config::handle_load_configuration(&mut application_load_conf);
+        },
+    );
+
+    // File -> Config -> Save
+    let mut application_save_conf = Rc::clone(&application);
+    menu.add(
+        "File/Configuration/&Save\t",
+        Shortcut::Ctrl | 's',
+        MenuFlag::Normal,
+        move |_| {
+            menu::file::config::handle_save_configuration(&mut application_save_conf);
+        },
+    );
+
+    // File -> Preferences
+    menu.add(
+        "&File/&Preferences\t",
+        Shortcut::Ctrl | 'p',
+        MenuFlag::MenuDivider,
+        |_| {
+            // menu::file::exit::handle_preferences();
+        },
+    );
+
+    // File -> Exit
+    menu.add(
+        "&File/E&xit\t",
+        Shortcut::Ctrl | 'x',
+        MenuFlag::Normal,
+        |_| {
+            menu::file::exit::handle_exit();
+        },
+    );
+
+    // Functions -> Observatory
+    let mut application_observatory = Rc::clone(&application);
+    menu.add(
+        "F&unctions/&Observatory\t",
+        Shortcut::Ctrl | 'o',
+        MenuFlag::Normal,
+        move |_| {
+            menu::functions::observatory::handle_observatory(&mut application_observatory);
+        },
+    );
+
+    // Functions -> Constraints
+    let mut application_constraints = Rc::clone(&application);
+    menu.add(
+        "F&unctions/&Constraints\t",
+        Shortcut::Ctrl | 'c',
+        MenuFlag::Normal,
+        move |_| {
+            // menu::functions::constraint::handle_constraint(&mut application_constraints);
+        },
+    );
+
+    // Functions -> Darkness
+    let mut application_darkness = Rc::clone(&application);
+    menu.add(
+        "F&unctions/&Darkness\t",
+        Shortcut::Ctrl | 'd',
+        MenuFlag::Normal,
+        move |_| {
+            menu::functions::darkness::handle_darkness(&mut application_darkness);
+        },
+    );
+
+    // Theme Options
+    // menu.add("&View/&Themes/Color Themes/Dark", Shortcut::None, MenuFlag::Normal, |_| {
+    menu.add("&View/&Themes/Dark", Shortcut::None, MenuFlag::Normal, |_| {
+        let theme = ColorTheme::new(color_themes::DARK_THEME);
+        theme.apply();
+    });
+
+    // menu.add("&View/&Themes/Color Themes/Black", Shortcut::None, MenuFlag::Normal, |_| {
+    menu.add("&View/&Themes/Black", Shortcut::None, MenuFlag::Normal, |_| {
+    let theme = ColorTheme::new(color_themes::BLACK_THEME);
+        theme.apply();
+    });
+
+    // menu.add("&View/&Themes/Color Themes/Gray", Shortcut::None, MenuFlag::Normal, |_| {
+    menu.add("&View/&Themes/Gray", Shortcut::None, MenuFlag::Normal, |_| {
+            let theme = ColorTheme::new(color_themes::GRAY_THEME);
+        theme.apply();
+    });
+
+    // menu.add("&View/&Themes/Widget Themes/Dark", Shortcut::None, MenuFlag::Normal, |_| {
+    //     let widget_theme = WidgetTheme::new(ThemeType::Dark);
+    //     widget_theme.apply();
+    // });
+    //
+    // menu.add("&View/&Themes/Widget Themes/Classic", Shortcut::None, MenuFlag::Normal, |_| {
+    //     let widget_theme = WidgetTheme::new(ThemeType::Classic);
+    //     widget_theme.apply();
+    // });
+
+
+    // About
+    let mut menu_about = menu.clone();
+    let wind_about = wind.clone();
+    menu.add(
+        "&Help/&About\t",
+        Shortcut::Ctrl | 'a',
+        MenuFlag::Normal, {
+        move |_| {
+            about::about::handle_about(&mut menu_about, &wind_about);
+        }
+    });
+
+    wind.end();
+    wind.make_resizable(true);
+    wind.show();
+
+    while app.wait(){
+        // Reduce frame updated to reduce CPU consumption
+        std::thread::sleep(std::time::Duration::from_millis(32));
+    }
+
+    // app.run().unwrap();
 
     Ok(())
-
 }

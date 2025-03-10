@@ -20,9 +20,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 
-// TODO remove before release
-#![allow(dead_code, unused_variables)]
-
 pub fn sind(v: f64) -> f64 {
     v.to_radians().sin()
 }
@@ -31,7 +28,9 @@ pub fn cosd(v: f64) -> f64 {
     v.to_radians().cos()
 }
 
-pub fn tand(v: f64) -> f64 { v.to_radians().tan() }
+pub fn tand(v: f64) -> f64 {
+    v.to_radians().tan()
+}
 
 pub fn constrain_360(angle: f64) -> f64 {
     ((angle % 360.0) + 360.0) % 360.0
@@ -42,9 +41,13 @@ pub fn constrain_180(v: f64) -> f64 {
 }
 
 pub fn constrain(v: f64) -> f64 {
-    if v < 0.0 { v + 1.0 }
-    else if v > 1.0 { v - 1.0 }
-    else { v }
+    if v < 0.0 {
+        v + 1.0
+    } else if v > 1.0 {
+        v - 1.0
+    } else {
+        v
+    }
 }
 
 pub fn round_float(value: f64, num_digits: f64) -> f64 {
@@ -76,10 +79,13 @@ pub fn round_float(value: f64, num_digits: f64) -> f64 {
 // Interpolation will work only if alt_before is below horizon and alt_after is above or vice-vers.
 // This function does not handle never rises and never sets situations.
 //
-pub fn two_point_interpolation(jd_before: f64, jd_after: f64,
-                               alt_before: f64, alt_after: f64, horizon: f64) -> f64 {
-
-
+pub fn two_point_interpolation(
+    jd_before: f64,
+    jd_after: f64,
+    alt_before: f64,
+    alt_after: f64,
+    horizon: f64,
+) -> f64 {
     // Approximate the horizon-crossing time:
     let slope = (alt_after - alt_before) / (jd_after - jd_before);
     let crossing_jd = jd_after - (alt_after - horizon) / slope;
@@ -94,8 +100,11 @@ pub fn float_loop(start: f64, threshold: f64, step_size: f64) -> impl Iterator<I
     })
 }
 
-pub fn cross_horizon(grid: Vec<(f64, f64, f64)>,
-                     horizon: f64, is_rising: bool) -> Vec<(f64, f64, f64, f64)> {
+pub fn cross_horizon(
+    grid: Vec<(f64, f64, f64)>,
+    horizon: f64,
+    is_rising: bool,
+) -> Vec<(f64, f64, f64, f64)> {
     let mut cross_points: Vec<(f64, f64, f64, f64)> = Vec::new();
     let mut previous_altitude = None;
     // let mut never_rise = true;
@@ -109,7 +118,7 @@ pub fn cross_horizon(grid: Vec<(f64, f64, f64)>,
                 }
             } else {
                 if prev_alt > horizon && grid[i].1 <= horizon {
-                    cross_points.push((grid[i-1].0, grid[i-1].1, grid[i].0, grid[i].1));
+                    cross_points.push((grid[i - 1].0, grid[i - 1].1, grid[i].0, grid[i].1));
                     // never_set = false;
                 }
             }

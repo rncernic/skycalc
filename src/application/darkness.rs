@@ -20,23 +20,27 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 
-use crate::environment::{Environment};
-use crate::moon::moon_alt_az_grid_utc;
-use crate::observer::{Observer};
-use crate::sun::{sun_alt_az_grid_utc, TwilightType};
-use crate::sun::TwilightType::{AstronomicalTwilight, CivilTwilight, NauticalTwilight, RiseSet};
-use crate::time::{Time};
+use crate::application::environment::Environment;
+use crate::application::moon::moon_alt_az_grid_utc;
+use crate::application::observer::Observer;
+use crate::application::sun::{sun_alt_az_grid_utc, TwilightType};
+use crate::application::sun::TwilightType::{AstronomicalTwilight, CivilTwilight, NauticalTwilight, RiseSet};
+use crate::application::time::Time;
 
 #[derive(Debug)]
 pub struct Darkness<'a> {
     pub observer: &'a Observer,
     pub time: &'a Time,
-    pub environment: &'a Environment
+    pub environment: &'a Environment,
 }
 
 impl<'a> Darkness<'a> {
     pub fn new(observer: &'a Observer, time: &'a Time, environment: &'a Environment) -> Self {
-        Self { observer, time, environment }
+        Self {
+            observer,
+            time,
+            environment,
+        }
     }
 
     pub fn darkness_utc(&self, twilight: TwilightType) -> (f64, f64) {
@@ -187,7 +191,10 @@ impl<'a> Darkness<'a> {
         self.format_darkness_time(|| self.get_darkness_utc_astronomical(), false, format)
     }
 
-    pub fn get_darkness_utc_astronomical_or_nautical_str(&self, format: Option<&str>) -> (&str, String) {
+    pub fn get_darkness_utc_astronomical_or_nautical_str(
+        &self,
+        format: Option<&str>,
+    ) -> (&str, String) {
         let local = self.get_darkness_utc_astronomical_or_nautical();
         (local.0, self.format_darkness_time(|| local.1, true, format))
     }
@@ -223,14 +230,22 @@ impl<'a> Darkness<'a> {
         self.format_darkness_time(|| self.get_darkness_local_astronomical(), false, format)
     }
 
-    pub fn get_darkness_local_astronomical_or_nautical_start_str(&self, format: Option<&str>) -> (&str, String) {
+    pub fn get_darkness_local_astronomical_or_nautical_start_str(
+        &self,
+        format: Option<&str>,
+    ) -> (&str, String) {
         let local = self.get_darkness_local_astronomical_or_nautical();
         (local.0, self.format_darkness_time(|| local.1, true, format))
     }
 
-    pub fn get_darkness_local_astronomical_or_nautical_end_str(&self, format: Option<&str>) -> (&str, String) {
+    pub fn get_darkness_local_astronomical_or_nautical_end_str(
+        &self,
+        format: Option<&str>,
+    ) -> (&str, String) {
         let local = self.get_darkness_local_astronomical_or_nautical();
-        (local.0, self.format_darkness_time(|| local.1, false, format))
+        (
+            local.0,
+            self.format_darkness_time(|| local.1, false, format),
+        )
     }
-
 }

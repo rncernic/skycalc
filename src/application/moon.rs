@@ -23,22 +23,30 @@
 // TODO remove before release
 #![allow(dead_code, unused_variables)]
 
-use crate::utils::{cosd, sind, tand, constrain_360, cross_horizon, two_point_interpolation};
-use crate::transformations::{equatorial_to_altaz};
-use crate::earth::nutation;
-use libm::{atan2};
+use crate::application::{
+    earth::nutation,
+    environment::Environment,
+    observer::Observer,
+    sun::RiseSetType,
+    time::Time,
+    transformations::equatorial_to_altaz,
+};
+use crate::utils::utils::{
+    constrain_360,
+    cosd,
+    cross_horizon,
+    sind,
+    tand,
+    two_point_interpolation
+};
+use libm::atan2;
 use std::f64::consts::PI;
-use crate::environment::{Environment};
-use crate::observer::{Observer};
-use crate::sun::{RiseSetType};
-use crate::time::{Time};
 
 #[derive(Debug)]
 pub enum MoonRS {
     NeverRise,
-    NeverSet
+    NeverSet,
 }
-
 
 // D, M, Mprime, F
 const LUNAR_LON_ARGS: &[&[f64]] = &[
@@ -191,7 +199,7 @@ const LUNAR_COEFF: &[&[f64]] = &[
     &[10675.0, -34782.0, 2065.0],
     &[10034.0, -23210.0, -1870.0],
     &[8548.0, -21636.0, 1828.0],
-    &[-7888.0, 24208.0,  -1794.0],
+    &[-7888.0, 24208.0, -1794.0],
     &[-6766.0, 30824.0, -1749.0],
     &[-5163.0, -8379.0, -1565.0],
     &[4987.0, -16675.0, -1491.0],
@@ -235,18 +243,20 @@ const LUNAR_COEFF: &[&[f64]] = &[
 ];
 
 pub fn moon_position_low_precision(t: f64) -> (f64, f64) {
-    let l = 218.32 + 481_267.881 * t + 6.29 * sind(135.0 + 477_198.87 * t) -
-        1.27 * sind(259.3 - 413_335.36 * t) + 0.66 * sind(235.7 + 890_534.22 * t) +
-        0.21 * sind(269.9 + 954_397.74 * t) - 0.19 * sind(357.5 + 35_999.05 * t) -
-        0.11 * sind(186.5 + 966_404.03 * t);
-    let b = 5.13 * sind( 93.3 + 483_202.02 * t) +
-        0.28 * sind(228.2 + 960_400.89 * t) -
-        0.28 * sind(318.3 + 6_003.15 * t) -
-        0.17 * sind(217.6 - 407_332.21 * t);
-    let p = 0.950_8 + 0.051_8 * cosd(135.0 + 477_198.87 * t) +
-        0.009_5 * cosd(259.3 - 413_335.36 * t) +
-        0.007_8 * cosd(235.7 + 890_534.22 * t) +
-        0.002_8 * cosd(269.9 + 954_397.74 * t);
+    let l = 218.32 + 481_267.881 * t + 6.29 * sind(135.0 + 477_198.87 * t)
+        - 1.27 * sind(259.3 - 413_335.36 * t)
+        + 0.66 * sind(235.7 + 890_534.22 * t)
+        + 0.21 * sind(269.9 + 954_397.74 * t)
+        - 0.19 * sind(357.5 + 35_999.05 * t)
+        - 0.11 * sind(186.5 + 966_404.03 * t);
+    let b = 5.13 * sind(93.3 + 483_202.02 * t) + 0.28 * sind(228.2 + 960_400.89 * t)
+        - 0.28 * sind(318.3 + 6_003.15 * t)
+        - 0.17 * sind(217.6 - 407_332.21 * t);
+    let p = 0.950_8
+        + 0.051_8 * cosd(135.0 + 477_198.87 * t)
+        + 0.009_5 * cosd(259.3 - 413_335.36 * t)
+        + 0.007_8 * cosd(235.7 + 890_534.22 * t)
+        + 0.002_8 * cosd(269.9 + 954_397.74 * t);
 
     // let sd = 0.272_4 * p;
     // let r = 1.0 / sind(p);
@@ -255,45 +265,51 @@ pub fn moon_position_low_precision(t: f64) -> (f64, f64) {
     let m = 0.917_5 * cosd(b) * sind(l) - 0.397_8 * sind(b);
     let n = 0.397_8 * cosd(b) * sind(l) + 0.917_5 * sind(b);
 
-    let mut ra = atan2(m,ll);
-    if ra < 0.0 { ra += 2.0 * PI;}
+    let mut ra = atan2(m, ll);
+    if ra < 0.0 {
+        ra += 2.0 * PI;
+    }
     let dec = n.asin();
     (ra.to_degrees(), dec.to_degrees())
 }
 
 pub fn moon_position_high_precision(t: f64) -> (f64, f64, f64) {
-
     //let t = jd2000_century_from_date(y, month, d);
 
     // mean longitude of the Moon
-    let lprime = constrain_360(218.316_447_7 + 481_267.881_234_21 * t -
-        0.001_578_6 * t * t +
-        t * t * t / 538_841.0 -
-        t * t * t * t / 65_194_000.0).to_radians();
+    let lprime = constrain_360(
+        218.316_447_7 + 481_267.881_234_21 * t - 0.001_578_6 * t * t + t * t * t / 538_841.0
+            - t * t * t * t / 65_194_000.0,
+    )
+    .to_radians();
 
     // mean elongation of the Moon
-    let d = constrain_360(297.850_192_1 + 445_267.111_403_4 * t -
-        0.001_881_9 * t * t +
-        t * t * t / 545_868.0 -
-        t * t * t * t / 113_065_000.0).to_radians();
+    let d = constrain_360(
+        297.850_192_1 + 445_267.111_403_4 * t - 0.001_881_9 * t * t + t * t * t / 545_868.0
+            - t * t * t * t / 113_065_000.0,
+    )
+    .to_radians();
 
     // mean anomaly of the Sun
     // note: this doesn't quite match the calculation used for solar position
-    let m = constrain_360(357.529_11 + 35_999.050_290_9 * t -
-        0.000_153_6 * t * t +
-        t * t * t / 24_490_000.0).to_radians();
+    let m = constrain_360(
+        357.529_11 + 35_999.050_290_9 * t - 0.000_153_6 * t * t + t * t * t / 24_490_000.0,
+    )
+    .to_radians();
 
     // mean anomaly of the Moon
-    let mprime = constrain_360(134.963_396_4 + 477_198.867_505_5 * t +
-        0.008_741_4 * t * t +
-        t * t * t  / 69_699.0 -
-        t * t * t * t / 14_712_000.0).to_radians();
+    let mprime = constrain_360(
+        134.963_396_4 + 477_198.867_505_5 * t + 0.008_741_4 * t * t + t * t * t / 69_699.0
+            - t * t * t * t / 14_712_000.0,
+    )
+    .to_radians();
 
     // argument of latitude of the Moon
-    let f = constrain_360(93.272_095_0 + 483_202.017_523_3 * t -
-        0.003_653_9 * t * t -
-        t * t * t / 3_526_000.0 +
-        t * t * t *t / 863_310_000.0).to_radians();
+    let f = constrain_360(
+        93.272_095_0 + 483_202.017_523_3 * t - 0.003_653_9 * t * t - t * t * t / 3_526_000.0
+            + t * t * t * t / 863_310_000.0,
+    )
+    .to_radians();
 
     // three further arguments, a1 is due to Venus, a2 is due to Jupiter
     let a1 = constrain_360(119.75 + 131.849 * t).to_radians();
@@ -313,12 +329,10 @@ pub fn moon_position_high_precision(t: f64) -> (f64, f64, f64) {
         if args[1] == 1.0 || args[1] == -1.0 {
             sigmal += e * coeff[0] * x.sin();
             sigmar += e * coeff[1] * x.cos();
-        }
-        else if args[1] == 2.0 || args[1] == -2.0 {
+        } else if args[1] == 2.0 || args[1] == -2.0 {
             sigmal += e2 * coeff[0] * x.sin();
             sigmar += e2 * coeff[1] * x.cos();
-        }
-        else {
+        } else {
             sigmal += coeff[0] * x.sin();
             sigmar += coeff[1] * x.cos();
         }
@@ -326,15 +340,22 @@ pub fn moon_position_high_precision(t: f64) -> (f64, f64, f64) {
         let v = LUNAR_LAT_ARGS[i];
         let x = v[0] * d + v[1] * m + v[2] * mprime + v[3] * f;
 
-        if v[1] == 1.0 || v[1] == -1.0 { sigmab += e * coeff[2] * x.sin(); }
-        else if v[1] == 2.0 ||  v[1] == -2.0 { sigmab += e2 * coeff[2] * x.sin(); }
-        else { sigmab += coeff[2] * x.sin(); }
+        if v[1] == 1.0 || v[1] == -1.0 {
+            sigmab += e * coeff[2] * x.sin();
+        } else if v[1] == 2.0 || v[1] == -2.0 {
+            sigmab += e2 * coeff[2] * x.sin();
+        } else {
+            sigmab += coeff[2] * x.sin();
+        }
     }
 
     sigmal += 3_958.0 * a1.sin() + 1_962.0 * (lprime - f).sin() + 318.0 * a2.sin();
-    sigmab += -2_235.0 * lprime.sin() + 382.0 * a3.sin() + 175.0 * (a1 - f).sin() +
-        175.0 * (a1 + f).sin() + 127.0 * (lprime - mprime).sin() -
-        115.0 * (lprime + mprime).sin();
+    sigmab += -2_235.0 * lprime.sin()
+        + 382.0 * a3.sin()
+        + 175.0 * (a1 - f).sin()
+        + 175.0 * (a1 + f).sin()
+        + 127.0 * (lprime - mprime).sin()
+        - 115.0 * (lprime + mprime).sin();
 
     let true_lon = lprime.to_degrees() + sigmal / 1e6;
     let true_lat = sigmab / 1e6;
@@ -346,26 +367,48 @@ pub fn moon_position_high_precision(t: f64) -> (f64, f64, f64) {
 
     eps = eps.to_radians();
 
-    let right_ascension = constrain_360(atan2(eps.cos() * sind(apparent_lon) -
-                                                  eps.sin() * tand(true_lat), cosd(apparent_lon)).to_degrees());
+    let right_ascension = constrain_360(
+        atan2(
+            eps.cos() * sind(apparent_lon) - eps.sin() * tand(true_lat),
+            cosd(apparent_lon),
+        )
+        .to_degrees(),
+    );
 
-    let declination = (sind(true_lat) * eps.cos() +
-        eps.sin() * sind(apparent_lon) * cosd(true_lat)).asin().to_degrees();
+    let declination = (sind(true_lat) * eps.cos()
+        + eps.sin() * sind(apparent_lon) * cosd(true_lat))
+    .asin()
+    .to_degrees();
 
     (right_ascension, declination, radius)
 }
 
-pub fn moon_alt_az_grid_utc(lat: f64, lon:f64, jd_start: f64, jd_end: f64,
-                            num_points: usize) -> Vec<(f64, f64, f64)> {
+pub fn moon_alt_az_grid_utc(
+    lat: f64,
+    lon: f64,
+    jd_start: f64,
+    jd_end: f64,
+    num_points: usize,
+) -> Vec<(f64, f64, f64)> {
     let mut grid: Vec<(f64, f64, f64)> = Vec::new();
     let inc = (jd_end - jd_start) / num_points as f64;
     for i in 0..=num_points {
         let jd = jd_start + inc * i as f64;
-        let t = (jd  - 2_451_545.0) / 36_525.0; // jd2000 century
+        let t = (jd - 2_451_545.0) / 36_525.0; // jd2000 century
         let (ra, dec, _) = moon_position_high_precision(t);
         let date = Time::from_jd(jd);
-        let (alt, az) = equatorial_to_altaz(lat, lon, ra, dec, date.year, date.month,
-                                            date.day, date.hour, date.minute, date.second);
+        let (alt, az) = equatorial_to_altaz(
+            lat,
+            lon,
+            ra,
+            dec,
+            date.year,
+            date.month,
+            date.day,
+            date.hour,
+            date.minute,
+            date.second,
+        );
         grid.push((jd, alt, az));
     }
     grid
@@ -376,17 +419,26 @@ pub fn moonrise_utc_grid(lat: f64, lon: f64, jd: f64, tz: f64) -> Result<f64, Mo
     let target_night_start = (jd + 0.5).floor() + tz / 24.0; // Noon @ local time
     let target_night_end = target_night_start + 1.0;
     let moon = moon_alt_az_grid_utc(lat, lon, target_night_start, target_night_end, num_points);
-    let v = cross_horizon(moon,0.125, true);
+    let v = cross_horizon(moon, 0.125, true);
     if v.is_empty() {
         Err(MoonRS::NeverRise)
     } else {
-        Ok(two_point_interpolation(v[0].0, v[0].2, v[0].1, v[0].3, 0.125))
+        Ok(two_point_interpolation(
+            v[0].0, v[0].2, v[0].1, v[0].3, 0.125,
+        ))
     }
 }
 
-pub fn next_moonrise_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+pub fn next_moonrise_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, MoonRS> {
     let mut current_jd = jd;
-    for _ in 0..max_days { // Limit to 2 days of iterations
+    for _ in 0..max_days {
+        // Limit to 2 days of iterations
         match moonrise_utc_grid(lat, lon, current_jd, tz) {
             Ok(moonrise) => return Ok(moonrise),
             Err(MoonRS::NeverRise) => current_jd += 1.0, // Skip to the next day
@@ -396,9 +448,16 @@ pub fn next_moonrise_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) ->
     Err(MoonRS::NeverRise) // Return error if no moon rise is found within the range
 }
 
-pub fn previous_moonrise_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+pub fn previous_moonrise_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, MoonRS> {
     let mut current_jd = jd - 1.0;
-    for _ in 0..max_days { // Limit to 2 days of iterations
+    for _ in 0..max_days {
+        // Limit to 2 days of iterations
         match moonrise_utc_grid(lat, lon, current_jd, tz) {
             Ok(moonrise) => return Ok(moonrise),
             Err(MoonRS::NeverRise) => current_jd -= 1.0, // Skip to the next day
@@ -408,7 +467,13 @@ pub fn previous_moonrise_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32
     Err(MoonRS::NeverRise) // Return error if no moon rise is found within the range
 }
 
-pub fn nearest_moonrise_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+pub fn nearest_moonrise_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, MoonRS> {
     let next = next_moonrise_utc(lat, lon, jd, tz, max_days);
     let previous = previous_moonrise_utc(lat, lon, jd, tz, max_days);
 
@@ -422,7 +487,7 @@ pub fn nearest_moonrise_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32)
         }
         (Ok(next_moonrise), Err(_)) => Ok(next_moonrise), // Only next is valid
         (Err(_), Ok(previous_moonrise)) => Ok(previous_moonrise), // Only previous is valid
-        (Err(next_err), Err(prev_err)) => Err(next_err), // Neither is valid, return an error
+        (Err(next_err), Err(prev_err)) => Err(next_err),  // Neither is valid, return an error
     }
 }
 
@@ -431,17 +496,26 @@ pub fn moonset_utc_grid(lat: f64, lon: f64, jd: f64, tz: f64) -> Result<f64, Moo
     let target_night_start = (jd + 0.5).floor() + tz / 24.0; // Noon @ local time
     let target_night_end = target_night_start + 1.0;
     let moon = moon_alt_az_grid_utc(lat, lon, target_night_start, target_night_end, num_points);
-    let v = cross_horizon(moon,0.125, false);
+    let v = cross_horizon(moon, 0.125, false);
     if v.is_empty() {
         Err(MoonRS::NeverSet)
     } else {
-        Ok(two_point_interpolation(v[0].0, v[0].2, v[0].1, v[0].3, 0.125))
+        Ok(two_point_interpolation(
+            v[0].0, v[0].2, v[0].1, v[0].3, 0.125,
+        ))
     }
 }
 
-pub fn next_moonset_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+pub fn next_moonset_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, MoonRS> {
     let mut current_jd = jd;
-    for _ in 0..max_days { // Limit to 2 days of iterations
+    for _ in 0..max_days {
+        // Limit to 2 days of iterations
         match moonset_utc_grid(lat, lon, current_jd, tz) {
             Ok(moonset) => return Ok(moonset),
             Err(MoonRS::NeverSet) => current_jd += 1.0, // Skip to the next day
@@ -451,9 +525,16 @@ pub fn next_moonset_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) -> 
     Err(MoonRS::NeverSet) // Return error if no moon set is found within the range
 }
 
-pub fn previous_moonset_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+pub fn previous_moonset_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, MoonRS> {
     let mut current_jd = jd - 1.0;
-    for _ in 0..max_days { // Limit to 2 days of iterations
+    for _ in 0..max_days {
+        // Limit to 2 days of iterations
         match moonrise_utc_grid(lat, lon, current_jd, tz) {
             Ok(moonset) => return Ok(moonset),
             Err(MoonRS::NeverSet) => current_jd -= 1.0, // Skip to the next day
@@ -463,7 +544,13 @@ pub fn previous_moonset_utc(lat: f64, lon: f64, jd: f64, tz: f64, max_days: u32)
     Err(MoonRS::NeverSet) // Return error if no moon set is found within the range
 }
 
-pub fn nearest_moonset_utc(lat: f64, lon: f64, jd:f64, tz: f64, max_days: u32) -> Result<f64, MoonRS> {
+pub fn nearest_moonset_utc(
+    lat: f64,
+    lon: f64,
+    jd: f64,
+    tz: f64,
+    max_days: u32,
+) -> Result<f64, MoonRS> {
     let next = next_moonset_utc(lat, lon, jd, tz, max_days);
     let previous = previous_moonset_utc(lat, lon, jd, tz, max_days);
 
@@ -484,12 +571,16 @@ pub fn nearest_moonset_utc(lat: f64, lon: f64, jd:f64, tz: f64, max_days: u32) -
 pub struct Moon<'a> {
     pub observer: &'a Observer,
     pub time: &'a Time,
-    pub environment: &'a Environment
+    pub environment: &'a Environment,
 }
 
 impl<'a> Moon<'a> {
     pub fn new(observer: &'a Observer, time: &'a Time, environment: &'a Environment) -> Moon<'a> {
-        Moon{ observer, time, environment }
+        Moon {
+            observer,
+            time,
+            environment,
+        }
     }
 
     fn get_moon_event_utc<F>(
@@ -509,12 +600,15 @@ impl<'a> Moon<'a> {
         let timezone = self.observer.timezone;
 
         match rise_set_type {
-            RiseSetType::Nearest => nearest_fn(latitude, longitude, jd, timezone, MAX_DAYS)
-                .unwrap_or(0.0),
-            RiseSetType::Next => next_fn(latitude, longitude, jd, timezone, MAX_DAYS)
-                .unwrap_or(0.0),
-            RiseSetType::Previous => previous_fn(latitude, longitude, jd, timezone, MAX_DAYS)
-                .unwrap_or(0.0),
+            RiseSetType::Nearest => {
+                nearest_fn(latitude, longitude, jd, timezone, MAX_DAYS).unwrap_or(0.0)
+            }
+            RiseSetType::Next => {
+                next_fn(latitude, longitude, jd, timezone, MAX_DAYS).unwrap_or(0.0)
+            }
+            RiseSetType::Previous => {
+                previous_fn(latitude, longitude, jd, timezone, MAX_DAYS).unwrap_or(0.0)
+            }
         }
     }
 
@@ -576,16 +670,28 @@ impl<'a> Moon<'a> {
         self.get_moon_event_str(rise_set_type, format, Moon::get_moonrise_utc, "Never Rises")
     }
 
-    pub fn get_moonrise_local_str(&self, rise_set_type: RiseSetType, format: Option<&str>) -> String {
-        self.get_moon_event_str(rise_set_type, format, Moon::get_moonrise_local, "Never Rises")
+    pub fn get_moonrise_local_str(
+        &self,
+        rise_set_type: RiseSetType,
+        format: Option<&str>,
+    ) -> String {
+        self.get_moon_event_str(
+            rise_set_type,
+            format,
+            Moon::get_moonrise_local,
+            "Never Rises",
+        )
     }
 
     pub fn get_moonset_utc_str(&self, rise_set_type: RiseSetType, format: Option<&str>) -> String {
         self.get_moon_event_str(rise_set_type, format, Moon::get_moonset_utc, "Never Sets")
     }
 
-    pub fn get_moonset_local_str(&self, rise_set_type: RiseSetType, format: Option<&str>) -> String {
+    pub fn get_moonset_local_str(
+        &self,
+        rise_set_type: RiseSetType,
+        format: Option<&str>,
+    ) -> String {
         self.get_moon_event_str(rise_set_type, format, Moon::get_moonset_local, "Never Sets")
     }
 }
-

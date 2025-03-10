@@ -23,26 +23,50 @@
 // TODO Implement test
 #![allow(dead_code, unused_variables)]
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Constraints {
-    #[serde(default = "default_min_altitude", deserialize_with = "deserialize_min_altitude")]
+    #[serde(
+        default = "default_min_altitude",
+        deserialize_with = "deserialize_min_altitude"
+    )]
     pub min_altitude: i64, // 20
-    #[serde(default = "default_max_altitude", deserialize_with = "deserialize_max_altitude")]
+    #[serde(
+        default = "default_max_altitude",
+        deserialize_with = "deserialize_max_altitude"
+    )]
     pub max_altitude: i64, // 80
-    #[serde(default = "default_min_size", deserialize_with = "deserialize_min_size")]
+    #[serde(
+        default = "default_min_size",
+        deserialize_with = "deserialize_min_size"
+    )]
     pub min_size: i64, // 10
-    #[serde(default = "default_max_size", deserialize_with = "deserialize_max_size")]
+    #[serde(
+        default = "default_max_size",
+        deserialize_with = "deserialize_max_size"
+    )]
     pub max_size: i64, // 300
-    #[serde(default = "default_moon_separation", deserialize_with = "deserialize_moon_separation")]
+    #[serde(
+        default = "default_moon_separation",
+        deserialize_with = "deserialize_moon_separation"
+    )]
     pub moon_separation: i64, // 45
-    #[serde(default = "default_frac_observable_time", deserialize_with = "deserialize_frac_observable_time")]
+    #[serde(
+        default = "default_frac_observable_time",
+        deserialize_with = "deserialize_frac_observable_time"
+    )]
     pub frac_observable_time: i64, // 50
-    #[serde(default = "default_max_targets", deserialize_with = "deserialize_max_targets")]
+    #[serde(
+        default = "default_max_targets",
+        deserialize_with = "deserialize_max_targets"
+    )]
     pub max_targets: i64, // 50
-    #[serde(default = "default_use_darkness", deserialize_with = "deserialize_use_darkness")]
-    pub use_darkness: bool // false
+    #[serde(
+        default = "default_use_darkness",
+        deserialize_with = "deserialize_use_darkness"
+    )]
+    pub use_darkness: bool, // false
 }
 
 pub fn default_min_altitude() -> i64 {
@@ -174,11 +198,19 @@ where
 }
 
 impl Constraints {
-    pub fn new(self, min_altitude: i64, max_altitude: i64,
-               min_size: i64, max_size: i64, moon_separation: i64,
-               frac_observable_time: i64, max_targets: i64,
-               use_darkness: bool) -> Self {
-        Self {min_altitude,
+    pub fn new(
+        self,
+        min_altitude: i64,
+        max_altitude: i64,
+        min_size: i64,
+        max_size: i64,
+        moon_separation: i64,
+        frac_observable_time: i64,
+        max_targets: i64,
+        use_darkness: bool,
+    ) -> Self {
+        Self {
+            min_altitude,
             max_altitude,
             min_size,
             max_size,
@@ -186,14 +218,18 @@ impl Constraints {
             frac_observable_time,
             max_targets,
             use_darkness,
-            ..self}
+            ..self
+        }
     }
 }
 
 // TODO Update
 impl std::fmt::Display for Constraints {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "min altitude: {} deg, max altitude: {} deg, min size: {} arcmin",
-               self.min_altitude, self.max_altitude, self.min_size)
+        write!(
+            f,
+            "min altitude: {} deg, max altitude: {} deg, min size: {} arcmin",
+            self.min_altitude, self.max_altitude, self.min_size
+        )
     }
 }
